@@ -1,0 +1,152 @@
+{
+  "formatVersion": "1.1",
+  "component": {
+    "group": "studio.tride",
+    "module": "tridekit-compose",
+    "version": "0.13.0",
+    "attributes": {
+      "org.gradle.status": "release"
+    }
+  },
+  "createdBy": {
+    "gradle": {
+      "version": "8.14.3"
+    }
+  },
+  "variants": [
+    {
+      "name": "releaseVariantReleaseApiPublication",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.libraryelements": "aar",
+        "org.gradle.usage": "java-api"
+      },
+      "dependencies": [
+        {
+          "group": "studio.tride",
+          "module": "tridekit",
+          "version": {
+            "requires": "0.13.0"
+          }
+        },
+        {
+          "group": "androidx.compose",
+          "module": "compose-bom",
+          "version": {
+            "requires": "2025.06.01"
+          },
+          "attributes": {
+            "org.gradle.category": "platform"
+          },
+          "endorseStrictVersions": true
+        },
+        {
+          "group": "androidx.compose.ui",
+          "module": "ui"
+        },
+        {
+          "group": "androidx.compose.runtime",
+          "module": "runtime"
+        },
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib",
+          "version": {
+            "requires": "2.4.0"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "tridekit-compose-0.13.0.aar",
+          "url": "tridekit-compose-0.13.0.aar",
+          "size": 5614,
+          "sha512": "4167b6ad63793377abd3acea86eeab446849522580c112f6edb97621aee5808b539f983cbae5934430c4fae2fbd4339e4dfe08c1f349169e58c149bafeea8025",
+          "sha256": "559bfed0131aa0f19217376f7e257e45bbdbf338836aa87da050716cfdd307ad",
+          "sha1": "242480020e2cd0a56ab5cbccd609a67d8d3d8d25",
+          "md5": "eccc7e1013e472736e4c836bdf60b7c7"
+        }
+      ]
+    },
+    {
+      "name": "releaseVariantReleaseRuntimePublication",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.libraryelements": "aar",
+        "org.gradle.usage": "java-runtime"
+      },
+      "dependencies": [
+        {
+          "group": "androidx.compose.foundation",
+          "module": "foundation"
+        },
+        {
+          "group": "studio.tride",
+          "module": "tridekit",
+          "version": {
+            "requires": "0.13.0"
+          }
+        },
+        {
+          "group": "androidx.compose",
+          "module": "compose-bom",
+          "version": {
+            "requires": "2025.06.01"
+          },
+          "attributes": {
+            "org.gradle.category": "platform"
+          },
+          "endorseStrictVersions": true
+        },
+        {
+          "group": "androidx.compose.ui",
+          "module": "ui"
+        },
+        {
+          "group": "androidx.compose.runtime",
+          "module": "runtime"
+        },
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib",
+          "version": {
+            "requires": "2.4.0"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "tridekit-compose-0.13.0.aar",
+          "url": "tridekit-compose-0.13.0.aar",
+          "size": 5614,
+          "sha512": "4167b6ad63793377abd3acea86eeab446849522580c112f6edb97621aee5808b539f983cbae5934430c4fae2fbd4339e4dfe08c1f349169e58c149bafeea8025",
+          "sha256": "559bfed0131aa0f19217376f7e257e45bbdbf338836aa87da050716cfdd307ad",
+          "sha1": "242480020e2cd0a56ab5cbccd609a67d8d3d8d25",
+          "md5": "eccc7e1013e472736e4c836bdf60b7c7"
+        }
+      ]
+    },
+    {
+      "name": "releaseVariantReleaseSourcePublication",
+      "attributes": {
+        "org.gradle.category": "documentation",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.docstype": "sources",
+        "org.gradle.usage": "java-runtime"
+      },
+      "files": [
+        {
+          "name": "tridekit-compose-0.13.0-sources.jar",
+          "url": "tridekit-compose-0.13.0-sources.jar",
+          "size": 1898,
+          "sha512": "a18cf3cda44f318d2524eb563bbb07e2ea212379ca079b270c8e2e7603865dc40332a43dfb877f957f1504835f96d5dee685db9fd1f02f2266dfbeb7f9863746",
+          "sha256": "fdedbedbcdfb7d7de6be87e8f02ad34d643bb38e9b6eacd94f1d10643938fe2f",
+          "sha1": "deeb4cc5ba2cac23fca2c949434b71ac9283520e",
+          "md5": "1bcb50645c4775066fc3ad6b1020086c"
+        }
+      ]
+    }
+  ]
+}
