@@ -24,6 +24,9 @@ internal class MorphWeightHolder {
         return Fold(vector.copyOf(), rejected)
     }
 
+    /** The vector held for the node, `null` before any write. */
+    fun held(gltfIndex: Int): FloatArray? = held[gltfIndex]?.copyOf()
+
     /** Forget every held vector (a scene attach). */
     fun reset() = held.clear()
 }

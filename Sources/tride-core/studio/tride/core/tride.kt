@@ -963,8 +963,6 @@ internal open class UniffiVTableCallbackInterfaceTrideStateChangeListener(
 
 
 
-
-
 // A JNA Library to expose the extern-C FFI definitions.
 // This is an implementation detail which will be called internally by the public API.
 
@@ -1063,15 +1061,11 @@ internal interface UniffiLib : Library {
     ): RustBuffer.ByValue
     fun uniffi_tride_ffi_fn_method_tridescene_list_cameras(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
-    fun uniffi_tride_ffi_fn_method_tridescene_list_carrier_metadata(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
-    ): RustBuffer.ByValue
     fun uniffi_tride_ffi_fn_method_tridescene_list_deformed_nodes(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
     fun uniffi_tride_ffi_fn_method_tridescene_list_generators(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
     fun uniffi_tride_ffi_fn_method_tridescene_list_lights(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
-    ): RustBuffer.ByValue
-    fun uniffi_tride_ffi_fn_method_tridescene_list_node_metadata(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
     fun uniffi_tride_ffi_fn_method_tridescene_list_parametric_nodes(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
@@ -1084,6 +1078,8 @@ internal interface UniffiLib : Library {
     fun uniffi_tride_ffi_fn_method_tridescene_material_graph_values(`ptr`: Pointer,`slug`: RustBuffer.ByValue,`family`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
     fun uniffi_tride_ffi_fn_method_tridescene_material_params(`ptr`: Pointer,`slug`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
+    ): RustBuffer.ByValue
+    fun uniffi_tride_ffi_fn_method_tridescene_node_worlds(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
     fun uniffi_tride_ffi_fn_method_tridescene_pick(`ptr`: Pointer,`x`: Float,`y`: Float,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
@@ -1103,11 +1099,9 @@ internal interface UniffiLib : Library {
     ): Unit
     fun uniffi_tride_ffi_fn_method_tridescene_reset_audio(`ptr`: Pointer,`input`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): Unit
-    fun uniffi_tride_ffi_fn_method_tridescene_resource_names(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
-    ): RustBuffer.ByValue
     fun uniffi_tride_ffi_fn_method_tridescene_resume(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
     ): Unit
-    fun uniffi_tride_ffi_fn_method_tridescene_scene_gltf_bytes(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+    fun uniffi_tride_ffi_fn_method_tridescene_scene_record(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
     fun uniffi_tride_ffi_fn_method_tridescene_scroll(`ptr`: Pointer,`offset`: Double,`extent`: Double,`sceneTop`: Double,`sceneHeight`: Double,uniffi_out_err: UniffiRustCallStatus, 
     ): Unit
@@ -1116,6 +1110,8 @@ internal interface UniffiLib : Library {
     fun uniffi_tride_ffi_fn_method_tridescene_set_binding(`ptr`: Pointer,`name`: RustBuffer.ByValue,`value`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): Unit
     fun uniffi_tride_ffi_fn_method_tridescene_set_changed_only(`ptr`: Pointer,`enabled`: Byte,uniffi_out_err: UniffiRustCallStatus, 
+    ): Unit
+    fun uniffi_tride_ffi_fn_method_tridescene_set_draw_visibility(`ptr`: Pointer,`enabled`: Byte,uniffi_out_err: UniffiRustCallStatus, 
     ): Unit
     fun uniffi_tride_ffi_fn_method_tridescene_set_image(`ptr`: Pointer,`name`: RustBuffer.ByValue,`width`: Int,`height`: Int,uniffi_out_err: UniffiRustCallStatus, 
     ): Long
@@ -1403,15 +1399,11 @@ internal interface UniffiLib : Library {
     ): Short
     fun uniffi_tride_ffi_checksum_method_tridescene_list_cameras(
     ): Short
-    fun uniffi_tride_ffi_checksum_method_tridescene_list_carrier_metadata(
-    ): Short
     fun uniffi_tride_ffi_checksum_method_tridescene_list_deformed_nodes(
     ): Short
     fun uniffi_tride_ffi_checksum_method_tridescene_list_generators(
     ): Short
     fun uniffi_tride_ffi_checksum_method_tridescene_list_lights(
-    ): Short
-    fun uniffi_tride_ffi_checksum_method_tridescene_list_node_metadata(
     ): Short
     fun uniffi_tride_ffi_checksum_method_tridescene_list_parametric_nodes(
     ): Short
@@ -1424,6 +1416,8 @@ internal interface UniffiLib : Library {
     fun uniffi_tride_ffi_checksum_method_tridescene_material_graph_values(
     ): Short
     fun uniffi_tride_ffi_checksum_method_tridescene_material_params(
+    ): Short
+    fun uniffi_tride_ffi_checksum_method_tridescene_node_worlds(
     ): Short
     fun uniffi_tride_ffi_checksum_method_tridescene_pick(
     ): Short
@@ -1443,11 +1437,9 @@ internal interface UniffiLib : Library {
     ): Short
     fun uniffi_tride_ffi_checksum_method_tridescene_reset_audio(
     ): Short
-    fun uniffi_tride_ffi_checksum_method_tridescene_resource_names(
-    ): Short
     fun uniffi_tride_ffi_checksum_method_tridescene_resume(
     ): Short
-    fun uniffi_tride_ffi_checksum_method_tridescene_scene_gltf_bytes(
+    fun uniffi_tride_ffi_checksum_method_tridescene_scene_record(
     ): Short
     fun uniffi_tride_ffi_checksum_method_tridescene_scroll(
     ): Short
@@ -1456,6 +1448,8 @@ internal interface UniffiLib : Library {
     fun uniffi_tride_ffi_checksum_method_tridescene_set_binding(
     ): Short
     fun uniffi_tride_ffi_checksum_method_tridescene_set_changed_only(
+    ): Short
+    fun uniffi_tride_ffi_checksum_method_tridescene_set_draw_visibility(
     ): Short
     fun uniffi_tride_ffi_checksum_method_tridescene_set_image(
     ): Short
@@ -1570,7 +1564,7 @@ private fun uniffiCheckApiChecksums(lib: UniffiLib) {
     if (lib.uniffi_tride_ffi_checksum_method_tridescene_append_audio() != 16015.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_tride_ffi_checksum_method_tridescene_asset_bytes() != 59192.toShort()) {
+    if (lib.uniffi_tride_ffi_checksum_method_tridescene_asset_bytes() != 57501.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_tride_ffi_checksum_method_tridescene_background_color() != 61595.toShort()) {
@@ -1591,7 +1585,7 @@ private fun uniffiCheckApiChecksums(lib: UniffiLib) {
     if (lib.uniffi_tride_ffi_checksum_method_tridescene_current_state() != 7297.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_tride_ffi_checksum_method_tridescene_datablock_mesh() != 47350.toShort()) {
+    if (lib.uniffi_tride_ffi_checksum_method_tridescene_datablock_mesh() != 35639.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_tride_ffi_checksum_method_tridescene_default_framing() != 47294.toShort()) {
@@ -1666,9 +1660,6 @@ private fun uniffiCheckApiChecksums(lib: UniffiLib) {
     if (lib.uniffi_tride_ffi_checksum_method_tridescene_list_cameras() != 62130.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_tride_ffi_checksum_method_tridescene_list_carrier_metadata() != 55623.toShort()) {
-        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
-    }
     if (lib.uniffi_tride_ffi_checksum_method_tridescene_list_deformed_nodes() != 18167.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -1676,9 +1667,6 @@ private fun uniffiCheckApiChecksums(lib: UniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_tride_ffi_checksum_method_tridescene_list_lights() != 15176.toShort()) {
-        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
-    }
-    if (lib.uniffi_tride_ffi_checksum_method_tridescene_list_node_metadata() != 2514.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_tride_ffi_checksum_method_tridescene_list_parametric_nodes() != 53329.toShort()) {
@@ -1697,6 +1685,9 @@ private fun uniffiCheckApiChecksums(lib: UniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_tride_ffi_checksum_method_tridescene_material_params() != 45436.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_tride_ffi_checksum_method_tridescene_node_worlds() != 40062.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_tride_ffi_checksum_method_tridescene_pick() != 52397.toShort()) {
@@ -1720,19 +1711,16 @@ private fun uniffiCheckApiChecksums(lib: UniffiLib) {
     if (lib.uniffi_tride_ffi_checksum_method_tridescene_request_full_frame() != 18476.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_tride_ffi_checksum_method_tridescene_reset() != 60852.toShort()) {
+    if (lib.uniffi_tride_ffi_checksum_method_tridescene_reset() != 50110.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_tride_ffi_checksum_method_tridescene_reset_audio() != 61102.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_tride_ffi_checksum_method_tridescene_resource_names() != 46477.toShort()) {
-        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
-    }
     if (lib.uniffi_tride_ffi_checksum_method_tridescene_resume() != 10048.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_tride_ffi_checksum_method_tridescene_scene_gltf_bytes() != 34053.toShort()) {
+    if (lib.uniffi_tride_ffi_checksum_method_tridescene_scene_record() != 7025.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_tride_ffi_checksum_method_tridescene_scroll() != 8139.toShort()) {
@@ -1745,6 +1733,9 @@ private fun uniffiCheckApiChecksums(lib: UniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_tride_ffi_checksum_method_tridescene_set_changed_only() != 20563.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_tride_ffi_checksum_method_tridescene_set_draw_visibility() != 12155.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_tride_ffi_checksum_method_tridescene_set_image() != 61389.toShort()) {
@@ -2284,7 +2275,8 @@ public interface TrideSceneInterface {
     
     /**
      * Raw bytes of an archive asset (`assets/…`, e.g. the image behind
-     * [`TrideTextureRef::uri`]); `None` when the path is not in the archive.
+     * [`TrideTextureRef::uri`]); `None` when the path is not in the archive, or only an older
+     * file's glTF carrier named it (one notice).
      */
     fun `assetBytes`(`uri`: kotlin.String): kotlin.ByteArray?
     
@@ -2343,7 +2335,9 @@ public interface TrideSceneInterface {
      * material — the mesh the host instances at every module frame (data-texture
      * instancing); a parametric datablock at its effective recipe
      * (pull again after `/datablocks/{uid}/geometry`). `None` when the uid is
-     * unknown / malformed or the decode fails (the host logs it).
+     * unknown / malformed or the decode fails (the host logs it). A view built again reads every
+     * mesh. The one core path the WASM `RuntimeHandle.datablockMesh` takes too
+     * (`tride_runtime_api::SourceData::datablock_mesh`).
      */
     fun `datablockMesh`(`uid`: kotlin.String): TrideDatablockMesh?
     
@@ -2510,19 +2504,6 @@ public interface TrideSceneInterface {
     fun `listCameras`(): List<TrideCameraDescriptor>
     
     /**
-     * Carrier metadata table:
-     * `light.id | camera.id → glTF node index of its baked CARRIER node` — the
-     * one `TransformManager` node a light/camera owns in `scene.gltf`. Bridges
-     * attach / reuse the gltfio-born Light or Camera component on that entity
-     * so a grouped light/camera inherits its parent chain from the glTF
-     * hierarchy (no bridge-side world compose). Same entry type as
-     * [`Self::list_node_metadata`] (disjoint id spaces). Empty for archives
-     * baked before `carrierMetadata` → bridges degrade warn-once to the
-     * manifest pose.
-     */
-    fun `listCarrierMetadata`(): List<TrideNodeMetaEntry>
-    
-    /**
      * Uids of every node drawn bent now.
      */
     fun `listDeformedNodes`(): List<kotlin.String>
@@ -2540,13 +2521,6 @@ public interface TrideSceneInterface {
      * enumerate at load to build Filament light entities.
      */
     fun `listLights`(): List<TrideLightDescriptor>
-    
-    /**
-     * Node metadata table for `/node/{id}` pointer resolution (Wave 6).
-     * Returns the mapping from manifest node IDs to glTF node indices.
-     * Empty for legacy `.trd` archives that pre-date this field.
-     */
-    fun `listNodeMetadata`(): List<TrideNodeMetaEntry>
     
     /**
      * Nodes drawn from a parametric datablock, in manifest order — linked
@@ -2589,6 +2563,14 @@ public interface TrideSceneInterface {
      * the slug is unknown.
      */
     fun `materialParams`(`slug`: kotlin.String): TrideMaterialParams?
+    
+    /**
+     * The node table's world matrices after the last tick: LE `f32`, 64 bytes per node,
+     * column-major, nodes in `scene_record().nodes` order (empty when the scene's lock is
+     * poisoned). A diagnostic for the host's check mode (gate A = B of E6): the host compares
+     * the worlds its entities are drawn at with these; it does not call it to draw.
+     */
+    fun `nodeWorlds`(): kotlin.ByteArray
     
     /**
      * Every node under view point `(x, y)`, nearest first — empty without a
@@ -2645,7 +2627,8 @@ public interface TrideSceneInterface {
     fun `requestFullFrame`()
     
     /**
-     * Preview reset: initial SM state, view-model defaults, glTF baseline.
+     * Preview reset: initial SM state, view-model defaults, the node table back to the
+     * manifest's poses.
      * Uses the scene timeline position from the last [`Self::tick`] (`0` if never ticked).
      */
     fun `reset`()
@@ -2659,12 +2642,6 @@ public interface TrideSceneInterface {
     fun `resetAudio`(`input`: kotlin.String)
     
     /**
-     * Archive paths of every resource besides the manifest and `scene.gltf` (`scene.bin`,
-     * `assets/…`), sorted; each is readable through [`Self::asset_bytes`].
-     */
-    fun `resourceNames`(): List<kotlin.String>
-    
-    /**
      * The host's tick loop runs again after standing still (the view off screen, the app in the
      * background): the scroll speed is measured afresh from the next [`Self::tick`] instead of
      * reading the page's move meanwhile as one frame's jump. Call it before that tick.
@@ -2675,11 +2652,10 @@ public interface TrideSceneInterface {
     fun `resume`()
     
     /**
-     * The archive's `scene.gltf` — the JSON document a glTF loader reads, with its buffer and
-     * image URIs as the archive names them (see [`Self::resource_names`]). A host needs no zip
-     * reader of its own: this plus [`Self::asset_bytes`] is the whole scene.
+     * The scene record: nodes, materials per family, skins, lights, cameras,
+     * images — the scene as loaded. `None` only when the scene's lock is poisoned.
      */
-    fun `sceneGltfBytes`(): kotlin.ByteArray
+    fun `sceneRecord`(): TrideSceneRecord?
     
     /**
      * The host's page or scroll view, in points: how far it is scrolled (`offset`), the visible
@@ -2719,6 +2695,13 @@ public interface TrideSceneInterface {
      * them out — the host keeps every value until it is written again. Off by default.
      */
     fun `setChangedOnly`(`enabled`: kotlin.Boolean)
+    
+    /**
+     * Hand out `/node/{uid}/drawVisible` — each node's visibility to the renderer, its own flag
+     * and every ancestor's — every node on the next tick, then the ones that changed (all again
+     * after `reset` / `request_full_frame`). Off by default: the stream is what it was.
+     */
+    fun `setDrawVisibility`(`enabled`: kotlin.Boolean)
     
     /**
      * A picture of `width × height` px — decoded, downscaled to 2048 on the long side, EXIF-turned
@@ -2983,7 +2966,8 @@ open class TrideScene: Disposable, AutoCloseable, TrideSceneInterface {
     
     /**
      * Raw bytes of an archive asset (`assets/…`, e.g. the image behind
-     * [`TrideTextureRef::uri`]); `None` when the path is not in the archive.
+     * [`TrideTextureRef::uri`]); `None` when the path is not in the archive, or only an older
+     * file's glTF carrier named it (one notice).
      */override fun `assetBytes`(`uri`: kotlin.String): kotlin.ByteArray? {
             return FfiConverterOptionalByteArray.lift(
     callWithPointer {
@@ -3112,7 +3096,9 @@ open class TrideScene: Disposable, AutoCloseable, TrideSceneInterface {
      * material — the mesh the host instances at every module frame (data-texture
      * instancing); a parametric datablock at its effective recipe
      * (pull again after `/datablocks/{uid}/geometry`). `None` when the uid is
-     * unknown / malformed or the decode fails (the host logs it).
+     * unknown / malformed or the decode fails (the host logs it). A view built again reads every
+     * mesh. The one core path the WASM `RuntimeHandle.datablockMesh` takes too
+     * (`tride_runtime_api::SourceData::datablock_mesh`).
      */override fun `datablockMesh`(`uid`: kotlin.String): TrideDatablockMesh? {
             return FfiConverterOptionalTypeTrideDatablockMesh.lift(
     callWithPointer {
@@ -3532,29 +3518,6 @@ open class TrideScene: Disposable, AutoCloseable, TrideSceneInterface {
 
     
     /**
-     * Carrier metadata table:
-     * `light.id | camera.id → glTF node index of its baked CARRIER node` — the
-     * one `TransformManager` node a light/camera owns in `scene.gltf`. Bridges
-     * attach / reuse the gltfio-born Light or Camera component on that entity
-     * so a grouped light/camera inherits its parent chain from the glTF
-     * hierarchy (no bridge-side world compose). Same entry type as
-     * [`Self::list_node_metadata`] (disjoint id spaces). Empty for archives
-     * baked before `carrierMetadata` → bridges degrade warn-once to the
-     * manifest pose.
-     */override fun `listCarrierMetadata`(): List<TrideNodeMetaEntry> {
-            return FfiConverterSequenceTypeTrideNodeMetaEntry.lift(
-    callWithPointer {
-    uniffiRustCall() { _status ->
-    UniffiLib.INSTANCE.uniffi_tride_ffi_fn_method_tridescene_list_carrier_metadata(
-        it, _status)
-}
-    }
-    )
-    }
-    
-
-    
-    /**
      * Uids of every node drawn bent now.
      */override fun `listDeformedNodes`(): List<kotlin.String> {
             return FfiConverterSequenceString.lift(
@@ -3595,23 +3558,6 @@ open class TrideScene: Disposable, AutoCloseable, TrideSceneInterface {
     callWithPointer {
     uniffiRustCall() { _status ->
     UniffiLib.INSTANCE.uniffi_tride_ffi_fn_method_tridescene_list_lights(
-        it, _status)
-}
-    }
-    )
-    }
-    
-
-    
-    /**
-     * Node metadata table for `/node/{id}` pointer resolution (Wave 6).
-     * Returns the mapping from manifest node IDs to glTF node indices.
-     * Empty for legacy `.trd` archives that pre-date this field.
-     */override fun `listNodeMetadata`(): List<TrideNodeMetaEntry> {
-            return FfiConverterSequenceTypeTrideNodeMetaEntry.lift(
-    callWithPointer {
-    uniffiRustCall() { _status ->
-    UniffiLib.INSTANCE.uniffi_tride_ffi_fn_method_tridescene_list_node_metadata(
         it, _status)
 }
     }
@@ -3715,6 +3661,24 @@ open class TrideScene: Disposable, AutoCloseable, TrideSceneInterface {
     uniffiRustCall() { _status ->
     UniffiLib.INSTANCE.uniffi_tride_ffi_fn_method_tridescene_material_params(
         it, FfiConverterString.lower(`slug`),_status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * The node table's world matrices after the last tick: LE `f32`, 64 bytes per node,
+     * column-major, nodes in `scene_record().nodes` order (empty when the scene's lock is
+     * poisoned). A diagnostic for the host's check mode (gate A = B of E6): the host compares
+     * the worlds its entities are drawn at with these; it does not call it to draw.
+     */override fun `nodeWorlds`(): kotlin.ByteArray {
+            return FfiConverterByteArray.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_tride_ffi_fn_method_tridescene_node_worlds(
+        it, _status)
 }
     }
     )
@@ -3847,7 +3811,8 @@ open class TrideScene: Disposable, AutoCloseable, TrideSceneInterface {
 
     
     /**
-     * Preview reset: initial SM state, view-model defaults, glTF baseline.
+     * Preview reset: initial SM state, view-model defaults, the node table back to the
+     * manifest's poses.
      * Uses the scene timeline position from the last [`Self::tick`] (`0` if never ticked).
      */
     @Throws(TrideException::class)override fun `reset`()
@@ -3881,22 +3846,6 @@ open class TrideScene: Disposable, AutoCloseable, TrideSceneInterface {
 
     
     /**
-     * Archive paths of every resource besides the manifest and `scene.gltf` (`scene.bin`,
-     * `assets/…`), sorted; each is readable through [`Self::asset_bytes`].
-     */override fun `resourceNames`(): List<kotlin.String> {
-            return FfiConverterSequenceString.lift(
-    callWithPointer {
-    uniffiRustCall() { _status ->
-    UniffiLib.INSTANCE.uniffi_tride_ffi_fn_method_tridescene_resource_names(
-        it, _status)
-}
-    }
-    )
-    }
-    
-
-    
-    /**
      * The host's tick loop runs again after standing still (the view off screen, the app in the
      * background): the scroll speed is measured afresh from the next [`Self::tick`] instead of
      * reading the page's move meanwhile as one frame's jump. Call it before that tick.
@@ -3917,14 +3866,13 @@ open class TrideScene: Disposable, AutoCloseable, TrideSceneInterface {
 
     
     /**
-     * The archive's `scene.gltf` — the JSON document a glTF loader reads, with its buffer and
-     * image URIs as the archive names them (see [`Self::resource_names`]). A host needs no zip
-     * reader of its own: this plus [`Self::asset_bytes`] is the whole scene.
-     */override fun `sceneGltfBytes`(): kotlin.ByteArray {
-            return FfiConverterByteArray.lift(
+     * The scene record: nodes, materials per family, skins, lights, cameras,
+     * images — the scene as loaded. `None` only when the scene's lock is poisoned.
+     */override fun `sceneRecord`(): TrideSceneRecord? {
+            return FfiConverterOptionalTypeTrideSceneRecord.lift(
     callWithPointer {
     uniffiRustCall() { _status ->
-    UniffiLib.INSTANCE.uniffi_tride_ffi_fn_method_tridescene_scene_gltf_bytes(
+    UniffiLib.INSTANCE.uniffi_tride_ffi_fn_method_tridescene_scene_record(
         it, _status)
 }
     }
@@ -4005,6 +3953,23 @@ open class TrideScene: Disposable, AutoCloseable, TrideSceneInterface {
     callWithPointer {
     uniffiRustCallWithError(TrideException) { _status ->
     UniffiLib.INSTANCE.uniffi_tride_ffi_fn_method_tridescene_set_changed_only(
+        it, FfiConverterBoolean.lower(`enabled`),_status)
+}
+    }
+    
+    
+
+    
+    /**
+     * Hand out `/node/{uid}/drawVisible` — each node's visibility to the renderer, its own flag
+     * and every ancestor's — every node on the next tick, then the ones that changed (all again
+     * after `reset` / `request_full_frame`). Off by default: the stream is what it was.
+     */
+    @Throws(TrideException::class)override fun `setDrawVisibility`(`enabled`: kotlin.Boolean)
+        = 
+    callWithPointer {
+    uniffiRustCallWithError(TrideException) { _status ->
+    UniffiLib.INSTANCE.uniffi_tride_ffi_fn_method_tridescene_set_draw_visibility(
         it, FfiConverterBoolean.lower(`enabled`),_status)
 }
     }
@@ -4419,7 +4384,13 @@ data class TickResult (
     /**
      * Per-binding eval failures collected during this tick.
      */
-    var `diagnostics`: List<EvalDiagnostic>
+    var `diagnostics`: List<EvalDiagnostic>, 
+    /**
+     * The skins' palettes this tick moved (only changed ones; all after load, `reset` and
+     * `request_full_frame`): `setBones` per mesh part, the part's box beside. After `advance`,
+     * the last of each one its ticks moved. Additive (R-FFIStability).
+     */
+    var `bonePalettes`: List<TrideBonePalette> = listOf()
 ) {
     
     companion object
@@ -4434,19 +4405,22 @@ public object FfiConverterTypeTickResult: FfiConverterRustBuffer<TickResult> {
             FfiConverterSequenceString.read(buf),
             FfiConverterSequenceTypeTrideMutation.read(buf),
             FfiConverterSequenceTypeEvalDiagnostic.read(buf),
+            FfiConverterSequenceTypeTrideBonePalette.read(buf),
         )
     }
 
     override fun allocationSize(value: TickResult) = (
             FfiConverterSequenceString.allocationSize(value.`dirtyPointers`) +
             FfiConverterSequenceTypeTrideMutation.allocationSize(value.`mutations`) +
-            FfiConverterSequenceTypeEvalDiagnostic.allocationSize(value.`diagnostics`)
+            FfiConverterSequenceTypeEvalDiagnostic.allocationSize(value.`diagnostics`) +
+            FfiConverterSequenceTypeTrideBonePalette.allocationSize(value.`bonePalettes`)
     )
 
     override fun write(value: TickResult, buf: ByteBuffer) {
             FfiConverterSequenceString.write(value.`dirtyPointers`, buf)
             FfiConverterSequenceTypeTrideMutation.write(value.`mutations`, buf)
             FfiConverterSequenceTypeEvalDiagnostic.write(value.`diagnostics`, buf)
+            FfiConverterSequenceTypeTrideBonePalette.write(value.`bonePalettes`, buf)
     }
 }
 
@@ -4571,6 +4545,69 @@ public object FfiConverterTypeTrideBloomOptions: FfiConverterRustBuffer<TrideBlo
 
 
 /**
+ * One skinned mesh part's bones of a tick.
+ */
+data class TrideBonePalette (
+    /**
+     * The mesh node's row (`TrideSceneRecord::nodes`).
+     */
+    var `mesh`: kotlin.UInt, 
+    /**
+     * The skin, by position in `TrideSceneRecord::skins`.
+     */
+    var `skin`: kotlin.UInt, 
+    /**
+     * The part ([`TrideSkinPart::part`]); 0 for an unsplit mesh.
+     */
+    var `part`: kotlin.UInt, 
+    /**
+     * `inv(W_mesh) × W_joint × IBM` per joint of the part, its order: little-endian `f32 × 16`
+     * column-major each.
+     */
+    var `bones`: kotlin.ByteArray, 
+    /**
+     * The part's mesh-space box under these bones; `None` = no bone weighs a vertex.
+     */
+    var `bounds`: TrideBounds?
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeTrideBonePalette: FfiConverterRustBuffer<TrideBonePalette> {
+    override fun read(buf: ByteBuffer): TrideBonePalette {
+        return TrideBonePalette(
+            FfiConverterUInt.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterByteArray.read(buf),
+            FfiConverterOptionalTypeTrideBounds.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: TrideBonePalette) = (
+            FfiConverterUInt.allocationSize(value.`mesh`) +
+            FfiConverterUInt.allocationSize(value.`skin`) +
+            FfiConverterUInt.allocationSize(value.`part`) +
+            FfiConverterByteArray.allocationSize(value.`bones`) +
+            FfiConverterOptionalTypeTrideBounds.allocationSize(value.`bounds`)
+    )
+
+    override fun write(value: TrideBonePalette, buf: ByteBuffer) {
+            FfiConverterUInt.write(value.`mesh`, buf)
+            FfiConverterUInt.write(value.`skin`, buf)
+            FfiConverterUInt.write(value.`part`, buf)
+            FfiConverterByteArray.write(value.`bones`, buf)
+            FfiConverterOptionalTypeTrideBounds.write(value.`bounds`, buf)
+    }
+}
+
+
+
+/**
  * One host binding of an input.
  */
 data class TrideBoundInput (
@@ -4604,6 +4641,47 @@ public object FfiConverterTypeTrideBoundInput: FfiConverterRustBuffer<TrideBound
             FfiConverterString.write(value.`input`, buf)
             FfiConverterTypeTrideInputSource.write(value.`source`, buf)
             FfiConverterTypeTrideInputMapping.write(value.`mapping`, buf)
+    }
+}
+
+
+
+/**
+ * A mesh-space axis-aligned box.
+ */
+data class TrideBounds (
+    /**
+     * `xyz`.
+     */
+    var `min`: List<kotlin.Float>, 
+    /**
+     * `xyz`.
+     */
+    var `max`: List<kotlin.Float>
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeTrideBounds: FfiConverterRustBuffer<TrideBounds> {
+    override fun read(buf: ByteBuffer): TrideBounds {
+        return TrideBounds(
+            FfiConverterSequenceFloat.read(buf),
+            FfiConverterSequenceFloat.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: TrideBounds) = (
+            FfiConverterSequenceFloat.allocationSize(value.`min`) +
+            FfiConverterSequenceFloat.allocationSize(value.`max`)
+    )
+
+    override fun write(value: TrideBounds, buf: ByteBuffer) {
+            FfiConverterSequenceFloat.write(value.`min`, buf)
+            FfiConverterSequenceFloat.write(value.`max`, buf)
     }
 }
 
@@ -4815,7 +4893,8 @@ data class TrideDatablockMesh (
      */
     var `normals`: kotlin.ByteArray, 
     /**
-     * Empty when the datablock carries no `TEXCOORD_0`.
+     * Empty when the datablock carries no `TEXCOORD_0`; a primitive without it beside one with
+     * it reads (1, 1), gltfio's dummy UV.
      */
     var `uvs`: kotlin.ByteArray, 
     /**
@@ -4830,8 +4909,9 @@ data class TrideDatablockMesh (
      */
     var `contentHash`: kotlin.String, 
     /**
-     * Little-endian `f32` glTF `TANGENT` (`xyzw`) per vertex, `MikkTSpace`, while
-     * `material` draws a normal map; empty otherwise — the bridge frames by the normal alone.
+     * Little-endian `f32` glTF `TANGENT` (`xyzw`, w = handedness) per vertex: the datablock's
+     * own stream when it carries one, else `MikkTSpace` while `material` draws a normal map;
+     * empty otherwise — the bridge frames by the normal alone.
      */
     var `tangents`: kotlin.ByteArray, 
     /**
@@ -4839,7 +4919,64 @@ data class TrideDatablockMesh (
      * default): an Extrude cloned as a module — face / back / side / fillet. Empty = the whole
      * mesh is one group wearing `material_params`. Additive (R-FFIStability).
      */
-    var `groups`: List<TrideGeometryGroup>
+    var `groups`: List<TrideGeometryGroup>, 
+    /**
+     * Little-endian `f32` `TEXCOORD_1` per vertex; `None` when the datablock carries none. A
+     * bridge that draws one UV set ignores it. Additive (R-FFIStability).
+     */
+    var `uvs1`: kotlin.ByteArray? = null, 
+    /**
+     * How `indices` assemble — `"triangles"`; every group draws it. Additive.
+     */
+    var `topology`: kotlin.String = "triangles", 
+    /**
+     * gltfio's ubershader key of the first group — the one group of a mesh without `groups`;
+     * each group carries its own. Additive (R-FFIStability).
+     */
+    var `materialKey`: TrideMaterialKey? = null, 
+    /**
+     * The datablock's points / lines / line and triangle strips (glTF modes 0, 1, 3, 5): one
+     * mesh each with its own streams and indices, drawn as more primitives of the same
+     * renderable, as gltfio draws them. Empty for a triangle-list-only datablock. Additive.
+     */
+    var `parts`: List<TrideDatablockPart> = listOf(), 
+    /**
+     * Morph targets (glTF §3.7.2.2), the deltas over this mesh's vertices. Additive.
+     */
+    var `morphTargets`: List<TrideMorphTarget> = listOf(), 
+    /**
+     * Mesh-space box of every position, widened by each vertex's `Σ|δ|` over the morph targets
+     * (weights in [−1, 1]); `None` without vertices. A skinned mesh's is its bind pose:
+     * [`TickResult::bone_palettes`] bring each part's box per tick. Additive.
+     */
+    var `bounds`: TrideBounds? = null, 
+    /**
+     * Little-endian `u16 × 4` `JOINTS_0` per vertex: positions in `skin.joints`, or in the
+     * part's palette once cut (`skin_parts`); `None` without influences. Additive.
+     */
+    var `joints`: kotlin.ByteArray? = null, 
+    /**
+     * Little-endian `f32 × 4` `WEIGHTS_0` per vertex, an `f32` set normalized to sum 1 as
+     * gltfio's `normalizeSkinningWeights`; as long as `joints`. Additive.
+     */
+    var `weights`: kotlin.ByteArray? = null, 
+    /**
+     * A skin over 256 joints cut into parts, each an index range of a group with its own
+     * palette (≤ 256 joints), numbered across the datablock (this mesh, then `parts`). Empty =
+     * one part, the skin's joints in order. Additive.
+     */
+    var `skinParts`: List<TrideSkinPart> = listOf(), 
+    /**
+     * The attributes of the first group — the one group of a mesh without `groups`; each group
+     * carries its own. `None` for a built mesh (its streams are whole). Additive.
+     */
+    var `attributes`: TrideVertexAttributes? = null, 
+    /**
+     * The streams the file stores as integers the GPU widens (`KHR_mesh_quantization`): upload
+     * these to the `VertexBuffer` in place of the `f32` stream of the same name, which stays for
+     * CPU work (`SurfaceOrientation`); `None` = every stream is `f32`. Additive.
+     */
+    var `stored`: TrideStoredStreams? = null
 ) {
     
     companion object
@@ -4862,6 +4999,17 @@ public object FfiConverterTypeTrideDatablockMesh: FfiConverterRustBuffer<TrideDa
             FfiConverterString.read(buf),
             FfiConverterByteArray.read(buf),
             FfiConverterSequenceTypeTrideGeometryGroup.read(buf),
+            FfiConverterOptionalByteArray.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterOptionalTypeTrideMaterialKey.read(buf),
+            FfiConverterSequenceTypeTrideDatablockPart.read(buf),
+            FfiConverterSequenceTypeTrideMorphTarget.read(buf),
+            FfiConverterOptionalTypeTrideBounds.read(buf),
+            FfiConverterOptionalByteArray.read(buf),
+            FfiConverterOptionalByteArray.read(buf),
+            FfiConverterSequenceTypeTrideSkinPart.read(buf),
+            FfiConverterOptionalTypeTrideVertexAttributes.read(buf),
+            FfiConverterOptionalTypeTrideStoredStreams.read(buf),
         )
     }
 
@@ -4876,7 +5024,18 @@ public object FfiConverterTypeTrideDatablockMesh: FfiConverterRustBuffer<TrideDa
             FfiConverterByteArray.allocationSize(value.`indices`) +
             FfiConverterString.allocationSize(value.`contentHash`) +
             FfiConverterByteArray.allocationSize(value.`tangents`) +
-            FfiConverterSequenceTypeTrideGeometryGroup.allocationSize(value.`groups`)
+            FfiConverterSequenceTypeTrideGeometryGroup.allocationSize(value.`groups`) +
+            FfiConverterOptionalByteArray.allocationSize(value.`uvs1`) +
+            FfiConverterString.allocationSize(value.`topology`) +
+            FfiConverterOptionalTypeTrideMaterialKey.allocationSize(value.`materialKey`) +
+            FfiConverterSequenceTypeTrideDatablockPart.allocationSize(value.`parts`) +
+            FfiConverterSequenceTypeTrideMorphTarget.allocationSize(value.`morphTargets`) +
+            FfiConverterOptionalTypeTrideBounds.allocationSize(value.`bounds`) +
+            FfiConverterOptionalByteArray.allocationSize(value.`joints`) +
+            FfiConverterOptionalByteArray.allocationSize(value.`weights`) +
+            FfiConverterSequenceTypeTrideSkinPart.allocationSize(value.`skinParts`) +
+            FfiConverterOptionalTypeTrideVertexAttributes.allocationSize(value.`attributes`) +
+            FfiConverterOptionalTypeTrideStoredStreams.allocationSize(value.`stored`)
     )
 
     override fun write(value: TrideDatablockMesh, buf: ByteBuffer) {
@@ -4891,6 +5050,130 @@ public object FfiConverterTypeTrideDatablockMesh: FfiConverterRustBuffer<TrideDa
             FfiConverterString.write(value.`contentHash`, buf)
             FfiConverterByteArray.write(value.`tangents`, buf)
             FfiConverterSequenceTypeTrideGeometryGroup.write(value.`groups`, buf)
+            FfiConverterOptionalByteArray.write(value.`uvs1`, buf)
+            FfiConverterString.write(value.`topology`, buf)
+            FfiConverterOptionalTypeTrideMaterialKey.write(value.`materialKey`, buf)
+            FfiConverterSequenceTypeTrideDatablockPart.write(value.`parts`, buf)
+            FfiConverterSequenceTypeTrideMorphTarget.write(value.`morphTargets`, buf)
+            FfiConverterOptionalTypeTrideBounds.write(value.`bounds`, buf)
+            FfiConverterOptionalByteArray.write(value.`joints`, buf)
+            FfiConverterOptionalByteArray.write(value.`weights`, buf)
+            FfiConverterSequenceTypeTrideSkinPart.write(value.`skinParts`, buf)
+            FfiConverterOptionalTypeTrideVertexAttributes.write(value.`attributes`, buf)
+            FfiConverterOptionalTypeTrideStoredStreams.write(value.`stored`, buf)
+    }
+}
+
+
+
+/**
+ * One point / line / strip primitive of a datablock ([`TrideDatablockMesh::parts`]): the
+ * mesh's fields for its own vertices — byte streams as there, its look, key and topology.
+ */
+data class TrideDatablockPart (
+    /**
+     * `"points"`, `"lines"`, `"line_strip"` or `"triangle_strip"`; `"triangles"` / `"lines"`
+     * once a skin over 256 joints cut the strip.
+     */
+    var `topology`: kotlin.String, 
+    var `material`: kotlin.String?, 
+    var `materialParams`: TrideMaterialParams?, 
+    var `materialKey`: TrideMaterialKey, 
+    var `positions`: kotlin.ByteArray, 
+    var `normals`: kotlin.ByteArray, 
+    var `uvs`: kotlin.ByteArray, 
+    var `uvs1`: kotlin.ByteArray?, 
+    var `colors`: kotlin.ByteArray, 
+    var `tangents`: kotlin.ByteArray, 
+    var `indices`: kotlin.ByteArray, 
+    var `morphTargets`: List<TrideMorphTarget>, 
+    var `bounds`: TrideBounds?, 
+    /**
+     * Empty without influences.
+     */
+    var `joints`: kotlin.ByteArray, 
+    var `weights`: kotlin.ByteArray, 
+    var `skinParts`: List<TrideSkinPart>, 
+    /**
+     * As [`TrideDatablockMesh::attributes`]. Additive.
+     */
+    var `attributes`: TrideVertexAttributes? = null, 
+    /**
+     * As [`TrideDatablockMesh::stored`]. Additive.
+     */
+    var `stored`: TrideStoredStreams? = null
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeTrideDatablockPart: FfiConverterRustBuffer<TrideDatablockPart> {
+    override fun read(buf: ByteBuffer): TrideDatablockPart {
+        return TrideDatablockPart(
+            FfiConverterString.read(buf),
+            FfiConverterOptionalString.read(buf),
+            FfiConverterOptionalTypeTrideMaterialParams.read(buf),
+            FfiConverterTypeTrideMaterialKey.read(buf),
+            FfiConverterByteArray.read(buf),
+            FfiConverterByteArray.read(buf),
+            FfiConverterByteArray.read(buf),
+            FfiConverterOptionalByteArray.read(buf),
+            FfiConverterByteArray.read(buf),
+            FfiConverterByteArray.read(buf),
+            FfiConverterByteArray.read(buf),
+            FfiConverterSequenceTypeTrideMorphTarget.read(buf),
+            FfiConverterOptionalTypeTrideBounds.read(buf),
+            FfiConverterByteArray.read(buf),
+            FfiConverterByteArray.read(buf),
+            FfiConverterSequenceTypeTrideSkinPart.read(buf),
+            FfiConverterOptionalTypeTrideVertexAttributes.read(buf),
+            FfiConverterOptionalTypeTrideStoredStreams.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: TrideDatablockPart) = (
+            FfiConverterString.allocationSize(value.`topology`) +
+            FfiConverterOptionalString.allocationSize(value.`material`) +
+            FfiConverterOptionalTypeTrideMaterialParams.allocationSize(value.`materialParams`) +
+            FfiConverterTypeTrideMaterialKey.allocationSize(value.`materialKey`) +
+            FfiConverterByteArray.allocationSize(value.`positions`) +
+            FfiConverterByteArray.allocationSize(value.`normals`) +
+            FfiConverterByteArray.allocationSize(value.`uvs`) +
+            FfiConverterOptionalByteArray.allocationSize(value.`uvs1`) +
+            FfiConverterByteArray.allocationSize(value.`colors`) +
+            FfiConverterByteArray.allocationSize(value.`tangents`) +
+            FfiConverterByteArray.allocationSize(value.`indices`) +
+            FfiConverterSequenceTypeTrideMorphTarget.allocationSize(value.`morphTargets`) +
+            FfiConverterOptionalTypeTrideBounds.allocationSize(value.`bounds`) +
+            FfiConverterByteArray.allocationSize(value.`joints`) +
+            FfiConverterByteArray.allocationSize(value.`weights`) +
+            FfiConverterSequenceTypeTrideSkinPart.allocationSize(value.`skinParts`) +
+            FfiConverterOptionalTypeTrideVertexAttributes.allocationSize(value.`attributes`) +
+            FfiConverterOptionalTypeTrideStoredStreams.allocationSize(value.`stored`)
+    )
+
+    override fun write(value: TrideDatablockPart, buf: ByteBuffer) {
+            FfiConverterString.write(value.`topology`, buf)
+            FfiConverterOptionalString.write(value.`material`, buf)
+            FfiConverterOptionalTypeTrideMaterialParams.write(value.`materialParams`, buf)
+            FfiConverterTypeTrideMaterialKey.write(value.`materialKey`, buf)
+            FfiConverterByteArray.write(value.`positions`, buf)
+            FfiConverterByteArray.write(value.`normals`, buf)
+            FfiConverterByteArray.write(value.`uvs`, buf)
+            FfiConverterOptionalByteArray.write(value.`uvs1`, buf)
+            FfiConverterByteArray.write(value.`colors`, buf)
+            FfiConverterByteArray.write(value.`tangents`, buf)
+            FfiConverterByteArray.write(value.`indices`, buf)
+            FfiConverterSequenceTypeTrideMorphTarget.write(value.`morphTargets`, buf)
+            FfiConverterOptionalTypeTrideBounds.write(value.`bounds`, buf)
+            FfiConverterByteArray.write(value.`joints`, buf)
+            FfiConverterByteArray.write(value.`weights`, buf)
+            FfiConverterSequenceTypeTrideSkinPart.write(value.`skinParts`, buf)
+            FfiConverterOptionalTypeTrideVertexAttributes.write(value.`attributes`, buf)
+            FfiConverterOptionalTypeTrideStoredStreams.write(value.`stored`, buf)
     }
 }
 
@@ -5480,7 +5763,21 @@ data class TrideGeometryGroup (
      */
     var `materialParams`: TrideMaterialParams?, 
     var `indexStart`: kotlin.UInt, 
-    var `indexCount`: kotlin.UInt
+    var `indexCount`: kotlin.UInt, 
+    /**
+     * A datablock mesh's group: gltfio's ubershader key of its primitive; `None` on a
+     * generator's trunk. Additive (R-FFIStability).
+     */
+    var `materialKey`: TrideMaterialKey? = null, 
+    /**
+     * A datablock mesh's group: its mesh's `topology`; `None` on a generator's trunk. Additive.
+     */
+    var `topology`: kotlin.String? = null, 
+    /**
+     * A datablock mesh's group: which attributes its primitive carries in the file — the rows
+     * of the others are padding, never framed from. `None` on a generator's trunk. Additive.
+     */
+    var `attributes`: TrideVertexAttributes? = null
 ) {
     
     companion object
@@ -5496,6 +5793,9 @@ public object FfiConverterTypeTrideGeometryGroup: FfiConverterRustBuffer<TrideGe
             FfiConverterOptionalTypeTrideMaterialParams.read(buf),
             FfiConverterUInt.read(buf),
             FfiConverterUInt.read(buf),
+            FfiConverterOptionalTypeTrideMaterialKey.read(buf),
+            FfiConverterOptionalString.read(buf),
+            FfiConverterOptionalTypeTrideVertexAttributes.read(buf),
         )
     }
 
@@ -5503,7 +5803,10 @@ public object FfiConverterTypeTrideGeometryGroup: FfiConverterRustBuffer<TrideGe
             FfiConverterOptionalString.allocationSize(value.`material`) +
             FfiConverterOptionalTypeTrideMaterialParams.allocationSize(value.`materialParams`) +
             FfiConverterUInt.allocationSize(value.`indexStart`) +
-            FfiConverterUInt.allocationSize(value.`indexCount`)
+            FfiConverterUInt.allocationSize(value.`indexCount`) +
+            FfiConverterOptionalTypeTrideMaterialKey.allocationSize(value.`materialKey`) +
+            FfiConverterOptionalString.allocationSize(value.`topology`) +
+            FfiConverterOptionalTypeTrideVertexAttributes.allocationSize(value.`attributes`)
     )
 
     override fun write(value: TrideGeometryGroup, buf: ByteBuffer) {
@@ -5511,6 +5814,9 @@ public object FfiConverterTypeTrideGeometryGroup: FfiConverterRustBuffer<TrideGe
             FfiConverterOptionalTypeTrideMaterialParams.write(value.`materialParams`, buf)
             FfiConverterUInt.write(value.`indexStart`, buf)
             FfiConverterUInt.write(value.`indexCount`, buf)
+            FfiConverterOptionalTypeTrideMaterialKey.write(value.`materialKey`, buf)
+            FfiConverterOptionalString.write(value.`topology`, buf)
+            FfiConverterOptionalTypeTrideVertexAttributes.write(value.`attributes`, buf)
     }
 }
 
@@ -6117,6 +6423,203 @@ public object FfiConverterTypeTrideMaterialGraphValue: FfiConverterRustBuffer<Tr
 
 
 /**
+ * Filament 1.77.1's `gltfio::MaterialKey` (`MaterialProvider.h:48-106`), field for field: what
+ * the host passes to `UbershaderProvider::createMaterialInstance` — the key gltfio's
+ * `getMaterialKey` computes for the primitive (`alpha_mode`: `opaque` / `mask` / `blend`).
+ */
+data class TrideMaterialKey (
+    var `doubleSided`: kotlin.Boolean, 
+    var `unlit`: kotlin.Boolean, 
+    var `hasVertexColors`: kotlin.Boolean, 
+    var `hasBaseColorTexture`: kotlin.Boolean, 
+    var `hasNormalTexture`: kotlin.Boolean, 
+    var `hasOcclusionTexture`: kotlin.Boolean, 
+    var `hasEmissiveTexture`: kotlin.Boolean, 
+    var `useSpecularGlossiness`: kotlin.Boolean, 
+    var `alphaMode`: kotlin.String, 
+    var `enableDiagnostics`: kotlin.Boolean, 
+    var `hasMetallicRoughnessTexture`: kotlin.Boolean, 
+    var `metallicRoughnessUv`: kotlin.UByte, 
+    var `baseColorUv`: kotlin.UByte, 
+    var `hasClearCoatTexture`: kotlin.Boolean, 
+    var `clearCoatUv`: kotlin.UByte, 
+    var `hasClearCoatRoughnessTexture`: kotlin.Boolean, 
+    var `clearCoatRoughnessUv`: kotlin.UByte, 
+    var `hasClearCoatNormalTexture`: kotlin.Boolean, 
+    var `clearCoatNormalUv`: kotlin.UByte, 
+    var `hasClearCoat`: kotlin.Boolean, 
+    var `hasTransmission`: kotlin.Boolean, 
+    var `hasTextureTransforms`: kotlin.Boolean, 
+    var `emissiveUv`: kotlin.UByte, 
+    var `aoUv`: kotlin.UByte, 
+    var `normalUv`: kotlin.UByte, 
+    var `hasTransmissionTexture`: kotlin.Boolean, 
+    var `transmissionUv`: kotlin.UByte, 
+    var `hasSheenColorTexture`: kotlin.Boolean, 
+    var `sheenColorUv`: kotlin.UByte, 
+    var `hasSheenRoughnessTexture`: kotlin.Boolean, 
+    var `sheenRoughnessUv`: kotlin.UByte, 
+    var `hasVolumeThicknessTexture`: kotlin.Boolean, 
+    var `volumeThicknessUv`: kotlin.UByte, 
+    var `hasSheen`: kotlin.Boolean, 
+    var `hasIor`: kotlin.Boolean, 
+    var `hasVolume`: kotlin.Boolean, 
+    var `hasDispersion`: kotlin.Boolean, 
+    var `hasSpecular`: kotlin.Boolean, 
+    var `hasSpecularTexture`: kotlin.Boolean, 
+    var `hasSpecularColorTexture`: kotlin.Boolean, 
+    var `specularTextureUv`: kotlin.UByte, 
+    var `specularColorTextureUv`: kotlin.UByte
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeTrideMaterialKey: FfiConverterRustBuffer<TrideMaterialKey> {
+    override fun read(buf: ByteBuffer): TrideMaterialKey {
+        return TrideMaterialKey(
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterUByte.read(buf),
+            FfiConverterUByte.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterUByte.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterUByte.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterUByte.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterUByte.read(buf),
+            FfiConverterUByte.read(buf),
+            FfiConverterUByte.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterUByte.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterUByte.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterUByte.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterUByte.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterUByte.read(buf),
+            FfiConverterUByte.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: TrideMaterialKey) = (
+            FfiConverterBoolean.allocationSize(value.`doubleSided`) +
+            FfiConverterBoolean.allocationSize(value.`unlit`) +
+            FfiConverterBoolean.allocationSize(value.`hasVertexColors`) +
+            FfiConverterBoolean.allocationSize(value.`hasBaseColorTexture`) +
+            FfiConverterBoolean.allocationSize(value.`hasNormalTexture`) +
+            FfiConverterBoolean.allocationSize(value.`hasOcclusionTexture`) +
+            FfiConverterBoolean.allocationSize(value.`hasEmissiveTexture`) +
+            FfiConverterBoolean.allocationSize(value.`useSpecularGlossiness`) +
+            FfiConverterString.allocationSize(value.`alphaMode`) +
+            FfiConverterBoolean.allocationSize(value.`enableDiagnostics`) +
+            FfiConverterBoolean.allocationSize(value.`hasMetallicRoughnessTexture`) +
+            FfiConverterUByte.allocationSize(value.`metallicRoughnessUv`) +
+            FfiConverterUByte.allocationSize(value.`baseColorUv`) +
+            FfiConverterBoolean.allocationSize(value.`hasClearCoatTexture`) +
+            FfiConverterUByte.allocationSize(value.`clearCoatUv`) +
+            FfiConverterBoolean.allocationSize(value.`hasClearCoatRoughnessTexture`) +
+            FfiConverterUByte.allocationSize(value.`clearCoatRoughnessUv`) +
+            FfiConverterBoolean.allocationSize(value.`hasClearCoatNormalTexture`) +
+            FfiConverterUByte.allocationSize(value.`clearCoatNormalUv`) +
+            FfiConverterBoolean.allocationSize(value.`hasClearCoat`) +
+            FfiConverterBoolean.allocationSize(value.`hasTransmission`) +
+            FfiConverterBoolean.allocationSize(value.`hasTextureTransforms`) +
+            FfiConverterUByte.allocationSize(value.`emissiveUv`) +
+            FfiConverterUByte.allocationSize(value.`aoUv`) +
+            FfiConverterUByte.allocationSize(value.`normalUv`) +
+            FfiConverterBoolean.allocationSize(value.`hasTransmissionTexture`) +
+            FfiConverterUByte.allocationSize(value.`transmissionUv`) +
+            FfiConverterBoolean.allocationSize(value.`hasSheenColorTexture`) +
+            FfiConverterUByte.allocationSize(value.`sheenColorUv`) +
+            FfiConverterBoolean.allocationSize(value.`hasSheenRoughnessTexture`) +
+            FfiConverterUByte.allocationSize(value.`sheenRoughnessUv`) +
+            FfiConverterBoolean.allocationSize(value.`hasVolumeThicknessTexture`) +
+            FfiConverterUByte.allocationSize(value.`volumeThicknessUv`) +
+            FfiConverterBoolean.allocationSize(value.`hasSheen`) +
+            FfiConverterBoolean.allocationSize(value.`hasIor`) +
+            FfiConverterBoolean.allocationSize(value.`hasVolume`) +
+            FfiConverterBoolean.allocationSize(value.`hasDispersion`) +
+            FfiConverterBoolean.allocationSize(value.`hasSpecular`) +
+            FfiConverterBoolean.allocationSize(value.`hasSpecularTexture`) +
+            FfiConverterBoolean.allocationSize(value.`hasSpecularColorTexture`) +
+            FfiConverterUByte.allocationSize(value.`specularTextureUv`) +
+            FfiConverterUByte.allocationSize(value.`specularColorTextureUv`)
+    )
+
+    override fun write(value: TrideMaterialKey, buf: ByteBuffer) {
+            FfiConverterBoolean.write(value.`doubleSided`, buf)
+            FfiConverterBoolean.write(value.`unlit`, buf)
+            FfiConverterBoolean.write(value.`hasVertexColors`, buf)
+            FfiConverterBoolean.write(value.`hasBaseColorTexture`, buf)
+            FfiConverterBoolean.write(value.`hasNormalTexture`, buf)
+            FfiConverterBoolean.write(value.`hasOcclusionTexture`, buf)
+            FfiConverterBoolean.write(value.`hasEmissiveTexture`, buf)
+            FfiConverterBoolean.write(value.`useSpecularGlossiness`, buf)
+            FfiConverterString.write(value.`alphaMode`, buf)
+            FfiConverterBoolean.write(value.`enableDiagnostics`, buf)
+            FfiConverterBoolean.write(value.`hasMetallicRoughnessTexture`, buf)
+            FfiConverterUByte.write(value.`metallicRoughnessUv`, buf)
+            FfiConverterUByte.write(value.`baseColorUv`, buf)
+            FfiConverterBoolean.write(value.`hasClearCoatTexture`, buf)
+            FfiConverterUByte.write(value.`clearCoatUv`, buf)
+            FfiConverterBoolean.write(value.`hasClearCoatRoughnessTexture`, buf)
+            FfiConverterUByte.write(value.`clearCoatRoughnessUv`, buf)
+            FfiConverterBoolean.write(value.`hasClearCoatNormalTexture`, buf)
+            FfiConverterUByte.write(value.`clearCoatNormalUv`, buf)
+            FfiConverterBoolean.write(value.`hasClearCoat`, buf)
+            FfiConverterBoolean.write(value.`hasTransmission`, buf)
+            FfiConverterBoolean.write(value.`hasTextureTransforms`, buf)
+            FfiConverterUByte.write(value.`emissiveUv`, buf)
+            FfiConverterUByte.write(value.`aoUv`, buf)
+            FfiConverterUByte.write(value.`normalUv`, buf)
+            FfiConverterBoolean.write(value.`hasTransmissionTexture`, buf)
+            FfiConverterUByte.write(value.`transmissionUv`, buf)
+            FfiConverterBoolean.write(value.`hasSheenColorTexture`, buf)
+            FfiConverterUByte.write(value.`sheenColorUv`, buf)
+            FfiConverterBoolean.write(value.`hasSheenRoughnessTexture`, buf)
+            FfiConverterUByte.write(value.`sheenRoughnessUv`, buf)
+            FfiConverterBoolean.write(value.`hasVolumeThicknessTexture`, buf)
+            FfiConverterUByte.write(value.`volumeThicknessUv`, buf)
+            FfiConverterBoolean.write(value.`hasSheen`, buf)
+            FfiConverterBoolean.write(value.`hasIor`, buf)
+            FfiConverterBoolean.write(value.`hasVolume`, buf)
+            FfiConverterBoolean.write(value.`hasDispersion`, buf)
+            FfiConverterBoolean.write(value.`hasSpecular`, buf)
+            FfiConverterBoolean.write(value.`hasSpecularTexture`, buf)
+            FfiConverterBoolean.write(value.`hasSpecularColorTexture`, buf)
+            FfiConverterUByte.write(value.`specularTextureUv`, buf)
+            FfiConverterUByte.write(value.`specularColorTextureUv`, buf)
+    }
+}
+
+
+
+/**
  * A material package read without loading it: Filament's `MATERIAL_VERSION` and
  * the backends it carries (`"opengl"`, `"essl1"`, `"vulkan"`, `"metal"`, `"webgpu"`).
  */
@@ -6193,8 +6696,8 @@ data class TrideMaterialParams (
      */
     var `alphaCutoff`: kotlin.Double?, 
     /**
-     * `KHR_materials_diffuse_transmission` factor: `> 0` (or a rim) selects the
-     * thin-surface material family on the host; `None` = 0.
+     * `KHR_materials_diffuse_transmission` factor as the thin family draws it; `None` = 0 (also
+     * when the core does not draw it: unlit, under glass, its channel off).
      */
     var `diffuseTransmission`: kotlin.Double?, 
     /**
@@ -6207,10 +6710,15 @@ data class TrideMaterialParams (
      */
     var `diffuseTransmissionColorTexture`: TrideTextureRef?, 
     /**
-     * Silhouette rim colour (linear RGB, length 3) and exponent; `None` = no rim.
+     * Silhouette rim colour (linear RGB, length 3) and exponent; `None` = no rim drawn.
      */
     var `rimColor`: List<kotlin.Double>?, 
-    var `rimPower`: kotlin.Double?
+    var `rimPower`: kotlin.Double?, 
+    /**
+     * The thin-surface family (`tride-generated-thin*`) draws it — the core's rule
+     * (`material_graph::built_in_thin`); the host keeps no copy.
+     */
+    var `thin`: kotlin.Boolean = false
 ) {
     
     companion object
@@ -6235,6 +6743,7 @@ public object FfiConverterTypeTrideMaterialParams: FfiConverterRustBuffer<TrideM
             FfiConverterOptionalTypeTrideTextureRef.read(buf),
             FfiConverterOptionalSequenceDouble.read(buf),
             FfiConverterOptionalDouble.read(buf),
+            FfiConverterBoolean.read(buf),
         )
     }
 
@@ -6251,7 +6760,8 @@ public object FfiConverterTypeTrideMaterialParams: FfiConverterRustBuffer<TrideM
             FfiConverterOptionalSequenceDouble.allocationSize(value.`diffuseTransmissionColor`) +
             FfiConverterOptionalTypeTrideTextureRef.allocationSize(value.`diffuseTransmissionColorTexture`) +
             FfiConverterOptionalSequenceDouble.allocationSize(value.`rimColor`) +
-            FfiConverterOptionalDouble.allocationSize(value.`rimPower`)
+            FfiConverterOptionalDouble.allocationSize(value.`rimPower`) +
+            FfiConverterBoolean.allocationSize(value.`thin`)
     )
 
     override fun write(value: TrideMaterialParams, buf: ByteBuffer) {
@@ -6268,6 +6778,7 @@ public object FfiConverterTypeTrideMaterialParams: FfiConverterRustBuffer<TrideM
             FfiConverterOptionalTypeTrideTextureRef.write(value.`diffuseTransmissionColorTexture`, buf)
             FfiConverterOptionalSequenceDouble.write(value.`rimColor`, buf)
             FfiConverterOptionalDouble.write(value.`rimPower`, buf)
+            FfiConverterBoolean.write(value.`thin`, buf)
     }
 }
 
@@ -6384,6 +6895,46 @@ public object FfiConverterTypeTrideModuleFrame: FfiConverterRustBuffer<TrideModu
 
 
 /**
+ * One morph target's deltas: little-endian `f32` `xyz` per vertex (tangents move no `w`); a
+ * stream no target of the datablock moves is empty.
+ */
+data class TrideMorphTarget (
+    var `positions`: kotlin.ByteArray, 
+    var `normals`: kotlin.ByteArray, 
+    var `tangents`: kotlin.ByteArray
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeTrideMorphTarget: FfiConverterRustBuffer<TrideMorphTarget> {
+    override fun read(buf: ByteBuffer): TrideMorphTarget {
+        return TrideMorphTarget(
+            FfiConverterByteArray.read(buf),
+            FfiConverterByteArray.read(buf),
+            FfiConverterByteArray.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: TrideMorphTarget) = (
+            FfiConverterByteArray.allocationSize(value.`positions`) +
+            FfiConverterByteArray.allocationSize(value.`normals`) +
+            FfiConverterByteArray.allocationSize(value.`tangents`)
+    )
+
+    override fun write(value: TrideMorphTarget, buf: ByteBuffer) {
+            FfiConverterByteArray.write(value.`positions`, buf)
+            FfiConverterByteArray.write(value.`normals`, buf)
+            FfiConverterByteArray.write(value.`tangents`, buf)
+    }
+}
+
+
+
+/**
  * MSAA options.
  */
 data class TrideMsaaOptions (
@@ -6464,66 +7015,6 @@ public object FfiConverterTypeTrideMutation: FfiConverterRustBuffer<TrideMutatio
             FfiConverterString.write(value.`pointer`, buf)
             FfiConverterString.write(value.`valueJson`, buf)
             FfiConverterTypeTrideTypedValue.write(value.`typedValue`, buf)
-    }
-}
-
-
-
-/**
- * Node metadata entry for `/node/{id}` pointer resolution (Wave 6).
- * Bridges build a `id → gltf_index` lookup table at load-time so
- * authored-timeline mutations can be dispatched to Filament entities.
- */
-data class TrideNodeMetaEntry (
-    /**
-     * Manifest node ID — the stable identifier in `/node/{id}` pointers.
-     */
-    var `id`: kotlin.String, 
-    /**
-     * Zero-based index into the glTF `nodes[]` array.
-     */
-    var `gltfIndex`: kotlin.UInt, 
-    /**
-     * The node's own authored visibility (`SceneNode.visible`); `true` for carriers and
-     * for ids the manifest's node list does not carry. What is drawn is the EFFECTIVE
-     * visibility — this AND every ancestor's — hosts compose it through [`Self::parent_id`].
-     */
-    var `visible`: kotlin.Boolean, 
-    /**
-     * Manifest id of the parent node (`Manifest.nodes[].children`); `None` at the root and
-     * for carriers.
-     */
-    var `parentId`: kotlin.String?
-) {
-    
-    companion object
-}
-
-/**
- * @suppress
- */
-public object FfiConverterTypeTrideNodeMetaEntry: FfiConverterRustBuffer<TrideNodeMetaEntry> {
-    override fun read(buf: ByteBuffer): TrideNodeMetaEntry {
-        return TrideNodeMetaEntry(
-            FfiConverterString.read(buf),
-            FfiConverterUInt.read(buf),
-            FfiConverterBoolean.read(buf),
-            FfiConverterOptionalString.read(buf),
-        )
-    }
-
-    override fun allocationSize(value: TrideNodeMetaEntry) = (
-            FfiConverterString.allocationSize(value.`id`) +
-            FfiConverterUInt.allocationSize(value.`gltfIndex`) +
-            FfiConverterBoolean.allocationSize(value.`visible`) +
-            FfiConverterOptionalString.allocationSize(value.`parentId`)
-    )
-
-    override fun write(value: TrideNodeMetaEntry, buf: ByteBuffer) {
-            FfiConverterString.write(value.`id`, buf)
-            FfiConverterUInt.write(value.`gltfIndex`, buf)
-            FfiConverterBoolean.write(value.`visible`, buf)
-            FfiConverterOptionalString.write(value.`parentId`, buf)
     }
 }
 
@@ -6821,6 +7312,598 @@ public object FfiConverterTypeTridePulseTable: FfiConverterRustBuffer<TridePulse
 
 
 /**
+ * One camera of [`TrideSceneRecord`]: parameters as [`TrideCameraDescriptor`], its parent and
+ * focus rows, the pose as a quaternion from the core (its rotation order composed).
+ */
+data class TrideRecordCamera (
+    var `id`: kotlin.String, 
+    var `kind`: kotlin.String, 
+    var `yfov`: kotlin.Double?, 
+    var `aspectRatio`: kotlin.Double?, 
+    var `xmag`: kotlin.Double?, 
+    var `ymag`: kotlin.Double?, 
+    var `znear`: kotlin.Double, 
+    var `zfar`: kotlin.Double?, 
+    var `focusDistance`: kotlin.Double?, 
+    var `aperture`: kotlin.Double?, 
+    var `focusTarget`: kotlin.UInt?, 
+    var `parent`: kotlin.UInt?, 
+    var `translation`: List<kotlin.Double>, 
+    var `rotation`: List<kotlin.Double>
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeTrideRecordCamera: FfiConverterRustBuffer<TrideRecordCamera> {
+    override fun read(buf: ByteBuffer): TrideRecordCamera {
+        return TrideRecordCamera(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterOptionalDouble.read(buf),
+            FfiConverterOptionalDouble.read(buf),
+            FfiConverterOptionalDouble.read(buf),
+            FfiConverterOptionalDouble.read(buf),
+            FfiConverterDouble.read(buf),
+            FfiConverterOptionalDouble.read(buf),
+            FfiConverterOptionalDouble.read(buf),
+            FfiConverterOptionalDouble.read(buf),
+            FfiConverterOptionalUInt.read(buf),
+            FfiConverterOptionalUInt.read(buf),
+            FfiConverterSequenceDouble.read(buf),
+            FfiConverterSequenceDouble.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: TrideRecordCamera) = (
+            FfiConverterString.allocationSize(value.`id`) +
+            FfiConverterString.allocationSize(value.`kind`) +
+            FfiConverterOptionalDouble.allocationSize(value.`yfov`) +
+            FfiConverterOptionalDouble.allocationSize(value.`aspectRatio`) +
+            FfiConverterOptionalDouble.allocationSize(value.`xmag`) +
+            FfiConverterOptionalDouble.allocationSize(value.`ymag`) +
+            FfiConverterDouble.allocationSize(value.`znear`) +
+            FfiConverterOptionalDouble.allocationSize(value.`zfar`) +
+            FfiConverterOptionalDouble.allocationSize(value.`focusDistance`) +
+            FfiConverterOptionalDouble.allocationSize(value.`aperture`) +
+            FfiConverterOptionalUInt.allocationSize(value.`focusTarget`) +
+            FfiConverterOptionalUInt.allocationSize(value.`parent`) +
+            FfiConverterSequenceDouble.allocationSize(value.`translation`) +
+            FfiConverterSequenceDouble.allocationSize(value.`rotation`)
+    )
+
+    override fun write(value: TrideRecordCamera, buf: ByteBuffer) {
+            FfiConverterString.write(value.`id`, buf)
+            FfiConverterString.write(value.`kind`, buf)
+            FfiConverterOptionalDouble.write(value.`yfov`, buf)
+            FfiConverterOptionalDouble.write(value.`aspectRatio`, buf)
+            FfiConverterOptionalDouble.write(value.`xmag`, buf)
+            FfiConverterOptionalDouble.write(value.`ymag`, buf)
+            FfiConverterDouble.write(value.`znear`, buf)
+            FfiConverterOptionalDouble.write(value.`zfar`, buf)
+            FfiConverterOptionalDouble.write(value.`focusDistance`, buf)
+            FfiConverterOptionalDouble.write(value.`aperture`, buf)
+            FfiConverterOptionalUInt.write(value.`focusTarget`, buf)
+            FfiConverterOptionalUInt.write(value.`parent`, buf)
+            FfiConverterSequenceDouble.write(value.`translation`, buf)
+            FfiConverterSequenceDouble.write(value.`rotation`, buf)
+    }
+}
+
+
+
+/**
+ * A family a material draws through its generated material; the package `None` when the scene
+ * keeps none there (`problem` says why, or no object draws it there). Uniforms and pictures:
+ * [`TrideScene::material_graph`].
+ */
+data class TrideRecordGraph (
+    var `family`: kotlin.String, 
+    var `packageUri`: kotlin.String?, 
+    var `hash`: kotlin.String?, 
+    var `name`: kotlin.String?, 
+    var `problem`: kotlin.String?
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeTrideRecordGraph: FfiConverterRustBuffer<TrideRecordGraph> {
+    override fun read(buf: ByteBuffer): TrideRecordGraph {
+        return TrideRecordGraph(
+            FfiConverterString.read(buf),
+            FfiConverterOptionalString.read(buf),
+            FfiConverterOptionalString.read(buf),
+            FfiConverterOptionalString.read(buf),
+            FfiConverterOptionalString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: TrideRecordGraph) = (
+            FfiConverterString.allocationSize(value.`family`) +
+            FfiConverterOptionalString.allocationSize(value.`packageUri`) +
+            FfiConverterOptionalString.allocationSize(value.`hash`) +
+            FfiConverterOptionalString.allocationSize(value.`name`) +
+            FfiConverterOptionalString.allocationSize(value.`problem`)
+    )
+
+    override fun write(value: TrideRecordGraph, buf: ByteBuffer) {
+            FfiConverterString.write(value.`family`, buf)
+            FfiConverterOptionalString.write(value.`packageUri`, buf)
+            FfiConverterOptionalString.write(value.`hash`, buf)
+            FfiConverterOptionalString.write(value.`name`, buf)
+            FfiConverterOptionalString.write(value.`problem`, buf)
+    }
+}
+
+
+
+/**
+ * One picture of the archive.
+ */
+data class TrideRecordImage (
+    var `uri`: kotlin.String, 
+    var `mimeType`: kotlin.String?
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeTrideRecordImage: FfiConverterRustBuffer<TrideRecordImage> {
+    override fun read(buf: ByteBuffer): TrideRecordImage {
+        return TrideRecordImage(
+            FfiConverterString.read(buf),
+            FfiConverterOptionalString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: TrideRecordImage) = (
+            FfiConverterString.allocationSize(value.`uri`) +
+            FfiConverterOptionalString.allocationSize(value.`mimeType`)
+    )
+
+    override fun write(value: TrideRecordImage, buf: ByteBuffer) {
+            FfiConverterString.write(value.`uri`, buf)
+            FfiConverterOptionalString.write(value.`mimeType`, buf)
+    }
+}
+
+
+
+/**
+ * One light of [`TrideSceneRecord`]: parameters as [`TrideLightDescriptor`], its parent row,
+ * the pose as a quaternion from the core.
+ */
+data class TrideRecordLight (
+    var `id`: kotlin.String, 
+    var `lightType`: kotlin.String, 
+    var `color`: List<kotlin.Double>, 
+    var `intensity`: kotlin.Double, 
+    var `range`: kotlin.Double?, 
+    var `innerConeAngle`: kotlin.Double?, 
+    var `outerConeAngle`: kotlin.Double?, 
+    var `castShadows`: kotlin.Boolean?, 
+    var `parent`: kotlin.UInt?, 
+    var `translation`: List<kotlin.Double>, 
+    var `rotation`: List<kotlin.Double>
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeTrideRecordLight: FfiConverterRustBuffer<TrideRecordLight> {
+    override fun read(buf: ByteBuffer): TrideRecordLight {
+        return TrideRecordLight(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterSequenceDouble.read(buf),
+            FfiConverterDouble.read(buf),
+            FfiConverterOptionalDouble.read(buf),
+            FfiConverterOptionalDouble.read(buf),
+            FfiConverterOptionalDouble.read(buf),
+            FfiConverterOptionalBoolean.read(buf),
+            FfiConverterOptionalUInt.read(buf),
+            FfiConverterSequenceDouble.read(buf),
+            FfiConverterSequenceDouble.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: TrideRecordLight) = (
+            FfiConverterString.allocationSize(value.`id`) +
+            FfiConverterString.allocationSize(value.`lightType`) +
+            FfiConverterSequenceDouble.allocationSize(value.`color`) +
+            FfiConverterDouble.allocationSize(value.`intensity`) +
+            FfiConverterOptionalDouble.allocationSize(value.`range`) +
+            FfiConverterOptionalDouble.allocationSize(value.`innerConeAngle`) +
+            FfiConverterOptionalDouble.allocationSize(value.`outerConeAngle`) +
+            FfiConverterOptionalBoolean.allocationSize(value.`castShadows`) +
+            FfiConverterOptionalUInt.allocationSize(value.`parent`) +
+            FfiConverterSequenceDouble.allocationSize(value.`translation`) +
+            FfiConverterSequenceDouble.allocationSize(value.`rotation`)
+    )
+
+    override fun write(value: TrideRecordLight, buf: ByteBuffer) {
+            FfiConverterString.write(value.`id`, buf)
+            FfiConverterString.write(value.`lightType`, buf)
+            FfiConverterSequenceDouble.write(value.`color`, buf)
+            FfiConverterDouble.write(value.`intensity`, buf)
+            FfiConverterOptionalDouble.write(value.`range`, buf)
+            FfiConverterOptionalDouble.write(value.`innerConeAngle`, buf)
+            FfiConverterOptionalDouble.write(value.`outerConeAngle`, buf)
+            FfiConverterOptionalBoolean.write(value.`castShadows`, buf)
+            FfiConverterOptionalUInt.write(value.`parent`, buf)
+            FfiConverterSequenceDouble.write(value.`translation`, buf)
+            FfiConverterSequenceDouble.write(value.`rotation`, buf)
+    }
+}
+
+
+
+/**
+ * One glTF map slot of a standard material.
+ */
+data class TrideRecordMap (
+    /**
+     * `baseColor`, `metallicRoughness`, `normal`, `occlusion`, `emissive`,
+     * `diffuseTransmissionColor`.
+     */
+    var `slot`: kotlin.String, 
+    /**
+     * The border already applied to the wrap.
+     */
+    var `texture`: TrideTextureRef, 
+    /**
+     * The picture is sRGB-encoded, else linear.
+     */
+    var `srgb`: kotlin.Boolean
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeTrideRecordMap: FfiConverterRustBuffer<TrideRecordMap> {
+    override fun read(buf: ByteBuffer): TrideRecordMap {
+        return TrideRecordMap(
+            FfiConverterString.read(buf),
+            FfiConverterTypeTrideTextureRef.read(buf),
+            FfiConverterBoolean.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: TrideRecordMap) = (
+            FfiConverterString.allocationSize(value.`slot`) +
+            FfiConverterTypeTrideTextureRef.allocationSize(value.`texture`) +
+            FfiConverterBoolean.allocationSize(value.`srgb`)
+    )
+
+    override fun write(value: TrideRecordMap, buf: ByteBuffer) {
+            FfiConverterString.write(value.`slot`, buf)
+            FfiConverterTypeTrideTextureRef.write(value.`texture`, buf)
+            FfiConverterBoolean.write(value.`srgb`, buf)
+    }
+}
+
+
+
+/**
+ * One palette material of [`TrideSceneRecord`]: how the core draws it per family
+ * (`"standard" | "graph"` on `mesh`, `"built_in" | "graph"` on `generated` / `instanced`).
+ */
+data class TrideRecordMaterial (
+    var `slug`: kotlin.String, 
+    var `mesh`: kotlin.String, 
+    var `generated`: kotlin.String, 
+    var `instanced`: kotlin.String, 
+    /**
+     * When `mesh` is `"standard"`.
+     */
+    var `standard`: TrideRecordStandard?, 
+    /**
+     * When `generated` or `instanced` is `"built_in"`.
+     */
+    var `builtIn`: TrideMaterialParams?, 
+    /**
+     * One per family drawn `"graph"`, family order.
+     */
+    var `graphs`: List<TrideRecordGraph>
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeTrideRecordMaterial: FfiConverterRustBuffer<TrideRecordMaterial> {
+    override fun read(buf: ByteBuffer): TrideRecordMaterial {
+        return TrideRecordMaterial(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterOptionalTypeTrideRecordStandard.read(buf),
+            FfiConverterOptionalTypeTrideMaterialParams.read(buf),
+            FfiConverterSequenceTypeTrideRecordGraph.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: TrideRecordMaterial) = (
+            FfiConverterString.allocationSize(value.`slug`) +
+            FfiConverterString.allocationSize(value.`mesh`) +
+            FfiConverterString.allocationSize(value.`generated`) +
+            FfiConverterString.allocationSize(value.`instanced`) +
+            FfiConverterOptionalTypeTrideRecordStandard.allocationSize(value.`standard`) +
+            FfiConverterOptionalTypeTrideMaterialParams.allocationSize(value.`builtIn`) +
+            FfiConverterSequenceTypeTrideRecordGraph.allocationSize(value.`graphs`)
+    )
+
+    override fun write(value: TrideRecordMaterial, buf: ByteBuffer) {
+            FfiConverterString.write(value.`slug`, buf)
+            FfiConverterString.write(value.`mesh`, buf)
+            FfiConverterString.write(value.`generated`, buf)
+            FfiConverterString.write(value.`instanced`, buf)
+            FfiConverterOptionalTypeTrideRecordStandard.write(value.`standard`, buf)
+            FfiConverterOptionalTypeTrideMaterialParams.write(value.`builtIn`, buf)
+            FfiConverterSequenceTypeTrideRecordGraph.write(value.`graphs`, buf)
+    }
+}
+
+
+
+/**
+ * One node row of [`TrideSceneRecord`].
+ */
+data class TrideRecordNode (
+    var `uid`: kotlin.String, 
+    /**
+     * For display and logs only — never an address.
+     */
+    var `name`: kotlin.String, 
+    var `kind`: kotlin.String, 
+    /**
+     * The parent's row; `None` at a root.
+     */
+    var `parent`: kotlin.UInt?, 
+    /**
+     * The children's rows, manifest order.
+     */
+    var `children`: List<kotlin.UInt>, 
+    /**
+     * Rest pose: `[x, y, z]`, quaternion `[x, y, z, w]`, `[sx, sy, sz]`.
+     */
+    var `translation`: List<kotlin.Double>, 
+    var `rotation`: List<kotlin.Double>, 
+    var `scale`: List<kotlin.Double>, 
+    /**
+     * Visibility to the renderer: its own flag and every ancestor's. Per tick:
+     * `/node/{uid}/drawVisible` after [`TrideScene::set_draw_visibility`].
+     */
+    var `visible`: kotlin.Boolean, 
+    /**
+     * The datablock it draws (uid, for [`TrideScene::datablock_mesh`]).
+     */
+    var `datablock`: kotlin.String?, 
+    /**
+     * Its skin, by position in [`TrideSceneRecord::skins`].
+     */
+    var `skin`: kotlin.UInt?, 
+    /**
+     * Morph weights at rest.
+     */
+    var `weights`: List<kotlin.Double>, 
+    /**
+     * The generator it hosts (slug).
+     */
+    var `generator`: kotlin.String?
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeTrideRecordNode: FfiConverterRustBuffer<TrideRecordNode> {
+    override fun read(buf: ByteBuffer): TrideRecordNode {
+        return TrideRecordNode(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterOptionalUInt.read(buf),
+            FfiConverterSequenceUInt.read(buf),
+            FfiConverterSequenceDouble.read(buf),
+            FfiConverterSequenceDouble.read(buf),
+            FfiConverterSequenceDouble.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterOptionalString.read(buf),
+            FfiConverterOptionalUInt.read(buf),
+            FfiConverterSequenceDouble.read(buf),
+            FfiConverterOptionalString.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: TrideRecordNode) = (
+            FfiConverterString.allocationSize(value.`uid`) +
+            FfiConverterString.allocationSize(value.`name`) +
+            FfiConverterString.allocationSize(value.`kind`) +
+            FfiConverterOptionalUInt.allocationSize(value.`parent`) +
+            FfiConverterSequenceUInt.allocationSize(value.`children`) +
+            FfiConverterSequenceDouble.allocationSize(value.`translation`) +
+            FfiConverterSequenceDouble.allocationSize(value.`rotation`) +
+            FfiConverterSequenceDouble.allocationSize(value.`scale`) +
+            FfiConverterBoolean.allocationSize(value.`visible`) +
+            FfiConverterOptionalString.allocationSize(value.`datablock`) +
+            FfiConverterOptionalUInt.allocationSize(value.`skin`) +
+            FfiConverterSequenceDouble.allocationSize(value.`weights`) +
+            FfiConverterOptionalString.allocationSize(value.`generator`)
+    )
+
+    override fun write(value: TrideRecordNode, buf: ByteBuffer) {
+            FfiConverterString.write(value.`uid`, buf)
+            FfiConverterString.write(value.`name`, buf)
+            FfiConverterString.write(value.`kind`, buf)
+            FfiConverterOptionalUInt.write(value.`parent`, buf)
+            FfiConverterSequenceUInt.write(value.`children`, buf)
+            FfiConverterSequenceDouble.write(value.`translation`, buf)
+            FfiConverterSequenceDouble.write(value.`rotation`, buf)
+            FfiConverterSequenceDouble.write(value.`scale`, buf)
+            FfiConverterBoolean.write(value.`visible`, buf)
+            FfiConverterOptionalString.write(value.`datablock`, buf)
+            FfiConverterOptionalUInt.write(value.`skin`, buf)
+            FfiConverterSequenceDouble.write(value.`weights`, buf)
+            FfiConverterOptionalString.write(value.`generator`, buf)
+    }
+}
+
+
+
+/**
+ * One material instance parameter by gltfio's name.
+ */
+data class TrideRecordParam (
+    var `name`: kotlin.String, 
+    var `value`: List<kotlin.Double>
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeTrideRecordParam: FfiConverterRustBuffer<TrideRecordParam> {
+    override fun read(buf: ByteBuffer): TrideRecordParam {
+        return TrideRecordParam(
+            FfiConverterString.read(buf),
+            FfiConverterSequenceDouble.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: TrideRecordParam) = (
+            FfiConverterString.allocationSize(value.`name`) +
+            FfiConverterSequenceDouble.allocationSize(value.`value`)
+    )
+
+    override fun write(value: TrideRecordParam, buf: ByteBuffer) {
+            FfiConverterString.write(value.`name`, buf)
+            FfiConverterSequenceDouble.write(value.`value`, buf)
+    }
+}
+
+
+
+/**
+ * One skin (glTF §3.7.3) of [`TrideSceneRecord`].
+ */
+data class TrideRecordSkin (
+    var `uid`: kotlin.String, 
+    /**
+     * Each joint's row, palette order; `None` = a joint the table lacks (identity bone).
+     */
+    var `joints`: List<kotlin.UInt?>, 
+    /**
+     * One `f32 × 16` column-major matrix per joint, little-endian bytes.
+     */
+    var `inverseBindMatrices`: kotlin.ByteArray
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeTrideRecordSkin: FfiConverterRustBuffer<TrideRecordSkin> {
+    override fun read(buf: ByteBuffer): TrideRecordSkin {
+        return TrideRecordSkin(
+            FfiConverterString.read(buf),
+            FfiConverterSequenceOptionalUInt.read(buf),
+            FfiConverterByteArray.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: TrideRecordSkin) = (
+            FfiConverterString.allocationSize(value.`uid`) +
+            FfiConverterSequenceOptionalUInt.allocationSize(value.`joints`) +
+            FfiConverterByteArray.allocationSize(value.`inverseBindMatrices`)
+    )
+
+    override fun write(value: TrideRecordSkin, buf: ByteBuffer) {
+            FfiConverterString.write(value.`uid`, buf)
+            FfiConverterSequenceOptionalUInt.write(value.`joints`, buf)
+            FfiConverterByteArray.write(value.`inverseBindMatrices`, buf)
+    }
+}
+
+
+
+/**
+ * A standard-form material as gltfio sets it up: initial parameters by gltfio's names, the maps
+ * by glTF slot, sides, alpha. The ubershader's `MaterialKey` belongs to a mesh group, not here.
+ */
+data class TrideRecordStandard (
+    var `params`: List<TrideRecordParam>, 
+    var `maps`: List<TrideRecordMap>, 
+    var `doubleSided`: kotlin.Boolean, 
+    /**
+     * `"opaque" | "mask" | "blend"`.
+     */
+    var `alphaMode`: kotlin.String, 
+    var `alphaCutoff`: kotlin.Double?
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeTrideRecordStandard: FfiConverterRustBuffer<TrideRecordStandard> {
+    override fun read(buf: ByteBuffer): TrideRecordStandard {
+        return TrideRecordStandard(
+            FfiConverterSequenceTypeTrideRecordParam.read(buf),
+            FfiConverterSequenceTypeTrideRecordMap.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterOptionalDouble.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: TrideRecordStandard) = (
+            FfiConverterSequenceTypeTrideRecordParam.allocationSize(value.`params`) +
+            FfiConverterSequenceTypeTrideRecordMap.allocationSize(value.`maps`) +
+            FfiConverterBoolean.allocationSize(value.`doubleSided`) +
+            FfiConverterString.allocationSize(value.`alphaMode`) +
+            FfiConverterOptionalDouble.allocationSize(value.`alphaCutoff`)
+    )
+
+    override fun write(value: TrideRecordStandard, buf: ByteBuffer) {
+            FfiConverterSequenceTypeTrideRecordParam.write(value.`params`, buf)
+            FfiConverterSequenceTypeTrideRecordMap.write(value.`maps`, buf)
+            FfiConverterBoolean.write(value.`doubleSided`, buf)
+            FfiConverterString.write(value.`alphaMode`, buf)
+            FfiConverterOptionalDouble.write(value.`alphaCutoff`, buf)
+    }
+}
+
+
+
+/**
  * The host's render knobs over the scene's render settings; every `None` keeps the
  * scene's value. Bloom, shadows and depth of field only switch off: `Some(true)` keeps the
  * scene's.
@@ -6970,6 +8053,127 @@ public object FfiConverterTypeTrideRenderSettings: FfiConverterRustBuffer<TrideR
             FfiConverterTypeTrideDepthOfFieldOptions.write(value.`depthOfField`, buf)
             FfiConverterTypeTrideSsrOptions.write(value.`screenSpaceReflections`, buf)
             FfiConverterTypeTridePixelationOptions.write(value.`pixelation`, buf)
+    }
+}
+
+
+
+/**
+ * The scene record: what a host builds its scene from, one call at
+ * load ([`TrideScene::scene_record`]); meshes stay one call per datablock
+ * ([`TrideScene::datablock_mesh`]). The scene as loaded, whenever asked. Rows are
+ * `manifest.nodes` positions — the address everywhere in the record.
+ */
+data class TrideSceneRecord (
+    /**
+     * `"skins" | "morphs" | "lines" | "points" | "strips"`: what a host must draw of the scene;
+     * one it does not draw it says once (a `partialDraw` notice).
+     */
+    var `requires`: List<kotlin.String>, 
+    var `nodes`: List<TrideRecordNode>, 
+    var `materials`: List<TrideRecordMaterial>, 
+    var `skins`: List<TrideRecordSkin>, 
+    var `lights`: List<TrideRecordLight>, 
+    var `cameras`: List<TrideRecordCamera>, 
+    /**
+     * `manifest.images`; bytes through [`TrideScene::asset_bytes`] of `uri`.
+     */
+    var `images`: List<TrideRecordImage>
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeTrideSceneRecord: FfiConverterRustBuffer<TrideSceneRecord> {
+    override fun read(buf: ByteBuffer): TrideSceneRecord {
+        return TrideSceneRecord(
+            FfiConverterSequenceString.read(buf),
+            FfiConverterSequenceTypeTrideRecordNode.read(buf),
+            FfiConverterSequenceTypeTrideRecordMaterial.read(buf),
+            FfiConverterSequenceTypeTrideRecordSkin.read(buf),
+            FfiConverterSequenceTypeTrideRecordLight.read(buf),
+            FfiConverterSequenceTypeTrideRecordCamera.read(buf),
+            FfiConverterSequenceTypeTrideRecordImage.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: TrideSceneRecord) = (
+            FfiConverterSequenceString.allocationSize(value.`requires`) +
+            FfiConverterSequenceTypeTrideRecordNode.allocationSize(value.`nodes`) +
+            FfiConverterSequenceTypeTrideRecordMaterial.allocationSize(value.`materials`) +
+            FfiConverterSequenceTypeTrideRecordSkin.allocationSize(value.`skins`) +
+            FfiConverterSequenceTypeTrideRecordLight.allocationSize(value.`lights`) +
+            FfiConverterSequenceTypeTrideRecordCamera.allocationSize(value.`cameras`) +
+            FfiConverterSequenceTypeTrideRecordImage.allocationSize(value.`images`)
+    )
+
+    override fun write(value: TrideSceneRecord, buf: ByteBuffer) {
+            FfiConverterSequenceString.write(value.`requires`, buf)
+            FfiConverterSequenceTypeTrideRecordNode.write(value.`nodes`, buf)
+            FfiConverterSequenceTypeTrideRecordMaterial.write(value.`materials`, buf)
+            FfiConverterSequenceTypeTrideRecordSkin.write(value.`skins`, buf)
+            FfiConverterSequenceTypeTrideRecordLight.write(value.`lights`, buf)
+            FfiConverterSequenceTypeTrideRecordCamera.write(value.`cameras`, buf)
+            FfiConverterSequenceTypeTrideRecordImage.write(value.`images`, buf)
+    }
+}
+
+
+
+/**
+ * One part of a skin cut over 256 joints: an index range with its palette.
+ */
+data class TrideSkinPart (
+    /**
+     * The part's number across the datablock: [`TrideBonePalette::part`].
+     */
+    var `part`: kotlin.UInt, 
+    /**
+     * The draw group the range lies in (0 for a mesh of one group).
+     */
+    var `group`: kotlin.UInt, 
+    var `indexStart`: kotlin.UInt, 
+    var `indexCount`: kotlin.UInt, 
+    /**
+     * The palette: positions in `skin.joints`, ascending, at most 256.
+     */
+    var `joints`: List<kotlin.UInt>
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeTrideSkinPart: FfiConverterRustBuffer<TrideSkinPart> {
+    override fun read(buf: ByteBuffer): TrideSkinPart {
+        return TrideSkinPart(
+            FfiConverterUInt.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterSequenceUInt.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: TrideSkinPart) = (
+            FfiConverterUInt.allocationSize(value.`part`) +
+            FfiConverterUInt.allocationSize(value.`group`) +
+            FfiConverterUInt.allocationSize(value.`indexStart`) +
+            FfiConverterUInt.allocationSize(value.`indexCount`) +
+            FfiConverterSequenceUInt.allocationSize(value.`joints`)
+    )
+
+    override fun write(value: TrideSkinPart, buf: ByteBuffer) {
+            FfiConverterUInt.write(value.`part`, buf)
+            FfiConverterUInt.write(value.`group`, buf)
+            FfiConverterUInt.write(value.`indexStart`, buf)
+            FfiConverterUInt.write(value.`indexCount`, buf)
+            FfiConverterSequenceUInt.write(value.`joints`, buf)
     }
 }
 
@@ -7175,6 +8379,113 @@ public object FfiConverterTypeTrideStateChange: FfiConverterRustBuffer<TrideStat
 
 
 /**
+ * One vertex stream as the file stores it, for Filament's `VertexBuffer` as gltfio sets it:
+ * `AttributeType` of `component` × `components`, `normalized`, `byteStride` = `stride`.
+ */
+data class TrideStoredStream (
+    /**
+     * `"i8"`, `"u8"`, `"i16"` or `"u16"` (Filament `BYTE…`, `UBYTE…`, `SHORT…`, `USHORT…`).
+     */
+    var `component`: kotlin.String, 
+    var `normalized`: kotlin.Boolean, 
+    /**
+     * Components per vertex (2, 3 or 4).
+     */
+    var `components`: kotlin.UByte, 
+    /**
+     * Bytes per vertex: the components padded to a multiple of 4.
+     */
+    var `stride`: kotlin.UInt, 
+    /**
+     * Little-endian rows, one per vertex.
+     */
+    var `bytes`: kotlin.ByteArray
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeTrideStoredStream: FfiConverterRustBuffer<TrideStoredStream> {
+    override fun read(buf: ByteBuffer): TrideStoredStream {
+        return TrideStoredStream(
+            FfiConverterString.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterUByte.read(buf),
+            FfiConverterUInt.read(buf),
+            FfiConverterByteArray.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: TrideStoredStream) = (
+            FfiConverterString.allocationSize(value.`component`) +
+            FfiConverterBoolean.allocationSize(value.`normalized`) +
+            FfiConverterUByte.allocationSize(value.`components`) +
+            FfiConverterUInt.allocationSize(value.`stride`) +
+            FfiConverterByteArray.allocationSize(value.`bytes`)
+    )
+
+    override fun write(value: TrideStoredStream, buf: ByteBuffer) {
+            FfiConverterString.write(value.`component`, buf)
+            FfiConverterBoolean.write(value.`normalized`, buf)
+            FfiConverterUByte.write(value.`components`, buf)
+            FfiConverterUInt.write(value.`stride`, buf)
+            FfiConverterByteArray.write(value.`bytes`, buf)
+    }
+}
+
+
+
+/**
+ * The stored forms of a mesh's GPU-widened streams; `None` = upload the `f32` stream.
+ */
+data class TrideStoredStreams (
+    var `positions`: TrideStoredStream?, 
+    var `uvs`: TrideStoredStream?, 
+    var `uvs1`: TrideStoredStream?, 
+    var `colors`: TrideStoredStream?, 
+    var `weights`: TrideStoredStream?
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeTrideStoredStreams: FfiConverterRustBuffer<TrideStoredStreams> {
+    override fun read(buf: ByteBuffer): TrideStoredStreams {
+        return TrideStoredStreams(
+            FfiConverterOptionalTypeTrideStoredStream.read(buf),
+            FfiConverterOptionalTypeTrideStoredStream.read(buf),
+            FfiConverterOptionalTypeTrideStoredStream.read(buf),
+            FfiConverterOptionalTypeTrideStoredStream.read(buf),
+            FfiConverterOptionalTypeTrideStoredStream.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: TrideStoredStreams) = (
+            FfiConverterOptionalTypeTrideStoredStream.allocationSize(value.`positions`) +
+            FfiConverterOptionalTypeTrideStoredStream.allocationSize(value.`uvs`) +
+            FfiConverterOptionalTypeTrideStoredStream.allocationSize(value.`uvs1`) +
+            FfiConverterOptionalTypeTrideStoredStream.allocationSize(value.`colors`) +
+            FfiConverterOptionalTypeTrideStoredStream.allocationSize(value.`weights`)
+    )
+
+    override fun write(value: TrideStoredStreams, buf: ByteBuffer) {
+            FfiConverterOptionalTypeTrideStoredStream.write(value.`positions`, buf)
+            FfiConverterOptionalTypeTrideStoredStream.write(value.`uvs`, buf)
+            FfiConverterOptionalTypeTrideStoredStream.write(value.`uvs1`, buf)
+            FfiConverterOptionalTypeTrideStoredStream.write(value.`colors`, buf)
+            FfiConverterOptionalTypeTrideStoredStream.write(value.`weights`, buf)
+    }
+}
+
+
+
+/**
  * Handle for [`TrideScene::unsubscribe`] / subscription methods (opaque `u64` token).
  */
 data class TrideSubscriptionId (
@@ -7356,6 +8667,58 @@ public object FfiConverterTypeTrideToneMappingOptions: FfiConverterRustBuffer<Tr
             FfiConverterBoolean.write(value.`luminanceScaling`, buf)
             FfiConverterBoolean.write(value.`gamutMapping`, buf)
             FfiConverterFloat.write(value.`saturation`, buf)
+    }
+}
+
+
+
+/**
+ * The attributes a datablock mesh's draw group carries in the file: the host
+ * frames the group as gltfio's `TangentsJob` frames its primitive — `SurfaceOrientation` over
+ * the group's range with `normals` / `tangents` / `uvs` only where flagged (no normals: flat
+ * ones where the material is lit, none where unlit).
+ */
+data class TrideVertexAttributes (
+    var `normals`: kotlin.Boolean, 
+    /**
+     * `TEXCOORD_0`.
+     */
+    var `uv0`: kotlin.Boolean, 
+    var `tangents`: kotlin.Boolean, 
+    /**
+     * Any `COLOR_n`: the key's `has_vertex_colors`.
+     */
+    var `colors`: kotlin.Boolean
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeTrideVertexAttributes: FfiConverterRustBuffer<TrideVertexAttributes> {
+    override fun read(buf: ByteBuffer): TrideVertexAttributes {
+        return TrideVertexAttributes(
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: TrideVertexAttributes) = (
+            FfiConverterBoolean.allocationSize(value.`normals`) +
+            FfiConverterBoolean.allocationSize(value.`uv0`) +
+            FfiConverterBoolean.allocationSize(value.`tangents`) +
+            FfiConverterBoolean.allocationSize(value.`colors`)
+    )
+
+    override fun write(value: TrideVertexAttributes, buf: ByteBuffer) {
+            FfiConverterBoolean.write(value.`normals`, buf)
+            FfiConverterBoolean.write(value.`uv0`, buf)
+            FfiConverterBoolean.write(value.`tangents`, buf)
+            FfiConverterBoolean.write(value.`colors`, buf)
     }
 }
 
@@ -8944,6 +10307,38 @@ public object FfiConverterOptionalByteArray: FfiConverterRustBuffer<kotlin.ByteA
 /**
  * @suppress
  */
+public object FfiConverterOptionalTypeTrideBounds: FfiConverterRustBuffer<TrideBounds?> {
+    override fun read(buf: ByteBuffer): TrideBounds? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterTypeTrideBounds.read(buf)
+    }
+
+    override fun allocationSize(value: TrideBounds?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterTypeTrideBounds.allocationSize(value)
+        }
+    }
+
+    override fun write(value: TrideBounds?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterTypeTrideBounds.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
 public object FfiConverterOptionalTypeTrideDatablockMesh: FfiConverterRustBuffer<TrideDatablockMesh?> {
     override fun read(buf: ByteBuffer): TrideDatablockMesh? {
         if (buf.get().toInt() == 0) {
@@ -9200,6 +10595,38 @@ public object FfiConverterOptionalTypeTrideMaterialGraph: FfiConverterRustBuffer
 /**
  * @suppress
  */
+public object FfiConverterOptionalTypeTrideMaterialKey: FfiConverterRustBuffer<TrideMaterialKey?> {
+    override fun read(buf: ByteBuffer): TrideMaterialKey? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterTypeTrideMaterialKey.read(buf)
+    }
+
+    override fun allocationSize(value: TrideMaterialKey?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterTypeTrideMaterialKey.allocationSize(value)
+        }
+    }
+
+    override fun write(value: TrideMaterialKey?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterTypeTrideMaterialKey.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
 public object FfiConverterOptionalTypeTrideMaterialPackageInfo: FfiConverterRustBuffer<TrideMaterialPackageInfo?> {
     override fun read(buf: ByteBuffer): TrideMaterialPackageInfo? {
         if (buf.get().toInt() == 0) {
@@ -9328,6 +10755,38 @@ public object FfiConverterOptionalTypeTridePulseTable: FfiConverterRustBuffer<Tr
 /**
  * @suppress
  */
+public object FfiConverterOptionalTypeTrideRecordStandard: FfiConverterRustBuffer<TrideRecordStandard?> {
+    override fun read(buf: ByteBuffer): TrideRecordStandard? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterTypeTrideRecordStandard.read(buf)
+    }
+
+    override fun allocationSize(value: TrideRecordStandard?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterTypeTrideRecordStandard.allocationSize(value)
+        }
+    }
+
+    override fun write(value: TrideRecordStandard?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterTypeTrideRecordStandard.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
 public object FfiConverterOptionalTypeTrideRenderSettings: FfiConverterRustBuffer<TrideRenderSettings?> {
     override fun read(buf: ByteBuffer): TrideRenderSettings? {
         if (buf.get().toInt() == 0) {
@@ -9350,6 +10809,102 @@ public object FfiConverterOptionalTypeTrideRenderSettings: FfiConverterRustBuffe
         } else {
             buf.put(1)
             FfiConverterTypeTrideRenderSettings.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterOptionalTypeTrideSceneRecord: FfiConverterRustBuffer<TrideSceneRecord?> {
+    override fun read(buf: ByteBuffer): TrideSceneRecord? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterTypeTrideSceneRecord.read(buf)
+    }
+
+    override fun allocationSize(value: TrideSceneRecord?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterTypeTrideSceneRecord.allocationSize(value)
+        }
+    }
+
+    override fun write(value: TrideSceneRecord?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterTypeTrideSceneRecord.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterOptionalTypeTrideStoredStream: FfiConverterRustBuffer<TrideStoredStream?> {
+    override fun read(buf: ByteBuffer): TrideStoredStream? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterTypeTrideStoredStream.read(buf)
+    }
+
+    override fun allocationSize(value: TrideStoredStream?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterTypeTrideStoredStream.allocationSize(value)
+        }
+    }
+
+    override fun write(value: TrideStoredStream?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterTypeTrideStoredStream.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterOptionalTypeTrideStoredStreams: FfiConverterRustBuffer<TrideStoredStreams?> {
+    override fun read(buf: ByteBuffer): TrideStoredStreams? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterTypeTrideStoredStreams.read(buf)
+    }
+
+    override fun allocationSize(value: TrideStoredStreams?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterTypeTrideStoredStreams.allocationSize(value)
+        }
+    }
+
+    override fun write(value: TrideStoredStreams?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterTypeTrideStoredStreams.write(value, buf)
         }
     }
 }
@@ -9392,6 +10947,38 @@ public object FfiConverterOptionalTypeTrideTextureRef: FfiConverterRustBuffer<Tr
 /**
  * @suppress
  */
+public object FfiConverterOptionalTypeTrideVertexAttributes: FfiConverterRustBuffer<TrideVertexAttributes?> {
+    override fun read(buf: ByteBuffer): TrideVertexAttributes? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterTypeTrideVertexAttributes.read(buf)
+    }
+
+    override fun allocationSize(value: TrideVertexAttributes?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterTypeTrideVertexAttributes.allocationSize(value)
+        }
+    }
+
+    override fun write(value: TrideVertexAttributes?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterTypeTrideVertexAttributes.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
 public object FfiConverterOptionalSequenceDouble: FfiConverterRustBuffer<List<kotlin.Double>?> {
     override fun read(buf: ByteBuffer): List<kotlin.Double>? {
         if (buf.get().toInt() == 0) {
@@ -9414,6 +11001,34 @@ public object FfiConverterOptionalSequenceDouble: FfiConverterRustBuffer<List<ko
         } else {
             buf.put(1)
             FfiConverterSequenceDouble.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceUInt: FfiConverterRustBuffer<List<kotlin.UInt>> {
+    override fun read(buf: ByteBuffer): List<kotlin.UInt> {
+        val len = buf.getInt()
+        return List<kotlin.UInt>(len) {
+            FfiConverterUInt.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<kotlin.UInt>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterUInt.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<kotlin.UInt>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterUInt.write(it, buf)
         }
     }
 }
@@ -9592,6 +11207,34 @@ public object FfiConverterSequenceTypeTrideBindingDescriptor: FfiConverterRustBu
 /**
  * @suppress
  */
+public object FfiConverterSequenceTypeTrideBonePalette: FfiConverterRustBuffer<List<TrideBonePalette>> {
+    override fun read(buf: ByteBuffer): List<TrideBonePalette> {
+        val len = buf.getInt()
+        return List<TrideBonePalette>(len) {
+            FfiConverterTypeTrideBonePalette.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<TrideBonePalette>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeTrideBonePalette.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<TrideBonePalette>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeTrideBonePalette.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
 public object FfiConverterSequenceTypeTrideBoundInput: FfiConverterRustBuffer<List<TrideBoundInput>> {
     override fun read(buf: ByteBuffer): List<TrideBoundInput> {
         val len = buf.getInt()
@@ -9638,6 +11281,34 @@ public object FfiConverterSequenceTypeTrideCameraDescriptor: FfiConverterRustBuf
         buf.putInt(value.size)
         value.iterator().forEach {
             FfiConverterTypeTrideCameraDescriptor.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeTrideDatablockPart: FfiConverterRustBuffer<List<TrideDatablockPart>> {
+    override fun read(buf: ByteBuffer): List<TrideDatablockPart> {
+        val len = buf.getInt()
+        return List<TrideDatablockPart>(len) {
+            FfiConverterTypeTrideDatablockPart.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<TrideDatablockPart>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeTrideDatablockPart.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<TrideDatablockPart>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeTrideDatablockPart.write(it, buf)
         }
     }
 }
@@ -9900,6 +11571,34 @@ public object FfiConverterSequenceTypeTrideModuleFrame: FfiConverterRustBuffer<L
 /**
  * @suppress
  */
+public object FfiConverterSequenceTypeTrideMorphTarget: FfiConverterRustBuffer<List<TrideMorphTarget>> {
+    override fun read(buf: ByteBuffer): List<TrideMorphTarget> {
+        val len = buf.getInt()
+        return List<TrideMorphTarget>(len) {
+            FfiConverterTypeTrideMorphTarget.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<TrideMorphTarget>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeTrideMorphTarget.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<TrideMorphTarget>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeTrideMorphTarget.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
 public object FfiConverterSequenceTypeTrideMutation: FfiConverterRustBuffer<List<TrideMutation>> {
     override fun read(buf: ByteBuffer): List<TrideMutation> {
         val len = buf.getInt()
@@ -9918,34 +11617,6 @@ public object FfiConverterSequenceTypeTrideMutation: FfiConverterRustBuffer<List
         buf.putInt(value.size)
         value.iterator().forEach {
             FfiConverterTypeTrideMutation.write(it, buf)
-        }
-    }
-}
-
-
-
-
-/**
- * @suppress
- */
-public object FfiConverterSequenceTypeTrideNodeMetaEntry: FfiConverterRustBuffer<List<TrideNodeMetaEntry>> {
-    override fun read(buf: ByteBuffer): List<TrideNodeMetaEntry> {
-        val len = buf.getInt()
-        return List<TrideNodeMetaEntry>(len) {
-            FfiConverterTypeTrideNodeMetaEntry.read(buf)
-        }
-    }
-
-    override fun allocationSize(value: List<TrideNodeMetaEntry>): ULong {
-        val sizeForLength = 4UL
-        val sizeForItems = value.map { FfiConverterTypeTrideNodeMetaEntry.allocationSize(it) }.sum()
-        return sizeForLength + sizeForItems
-    }
-
-    override fun write(value: List<TrideNodeMetaEntry>, buf: ByteBuffer) {
-        buf.putInt(value.size)
-        value.iterator().forEach {
-            FfiConverterTypeTrideNodeMetaEntry.write(it, buf)
         }
     }
 }
@@ -10002,6 +11673,314 @@ public object FfiConverterSequenceTypeTridePointerHit: FfiConverterRustBuffer<Li
         buf.putInt(value.size)
         value.iterator().forEach {
             FfiConverterTypeTridePointerHit.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeTrideRecordCamera: FfiConverterRustBuffer<List<TrideRecordCamera>> {
+    override fun read(buf: ByteBuffer): List<TrideRecordCamera> {
+        val len = buf.getInt()
+        return List<TrideRecordCamera>(len) {
+            FfiConverterTypeTrideRecordCamera.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<TrideRecordCamera>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeTrideRecordCamera.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<TrideRecordCamera>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeTrideRecordCamera.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeTrideRecordGraph: FfiConverterRustBuffer<List<TrideRecordGraph>> {
+    override fun read(buf: ByteBuffer): List<TrideRecordGraph> {
+        val len = buf.getInt()
+        return List<TrideRecordGraph>(len) {
+            FfiConverterTypeTrideRecordGraph.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<TrideRecordGraph>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeTrideRecordGraph.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<TrideRecordGraph>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeTrideRecordGraph.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeTrideRecordImage: FfiConverterRustBuffer<List<TrideRecordImage>> {
+    override fun read(buf: ByteBuffer): List<TrideRecordImage> {
+        val len = buf.getInt()
+        return List<TrideRecordImage>(len) {
+            FfiConverterTypeTrideRecordImage.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<TrideRecordImage>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeTrideRecordImage.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<TrideRecordImage>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeTrideRecordImage.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeTrideRecordLight: FfiConverterRustBuffer<List<TrideRecordLight>> {
+    override fun read(buf: ByteBuffer): List<TrideRecordLight> {
+        val len = buf.getInt()
+        return List<TrideRecordLight>(len) {
+            FfiConverterTypeTrideRecordLight.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<TrideRecordLight>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeTrideRecordLight.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<TrideRecordLight>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeTrideRecordLight.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeTrideRecordMap: FfiConverterRustBuffer<List<TrideRecordMap>> {
+    override fun read(buf: ByteBuffer): List<TrideRecordMap> {
+        val len = buf.getInt()
+        return List<TrideRecordMap>(len) {
+            FfiConverterTypeTrideRecordMap.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<TrideRecordMap>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeTrideRecordMap.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<TrideRecordMap>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeTrideRecordMap.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeTrideRecordMaterial: FfiConverterRustBuffer<List<TrideRecordMaterial>> {
+    override fun read(buf: ByteBuffer): List<TrideRecordMaterial> {
+        val len = buf.getInt()
+        return List<TrideRecordMaterial>(len) {
+            FfiConverterTypeTrideRecordMaterial.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<TrideRecordMaterial>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeTrideRecordMaterial.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<TrideRecordMaterial>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeTrideRecordMaterial.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeTrideRecordNode: FfiConverterRustBuffer<List<TrideRecordNode>> {
+    override fun read(buf: ByteBuffer): List<TrideRecordNode> {
+        val len = buf.getInt()
+        return List<TrideRecordNode>(len) {
+            FfiConverterTypeTrideRecordNode.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<TrideRecordNode>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeTrideRecordNode.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<TrideRecordNode>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeTrideRecordNode.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeTrideRecordParam: FfiConverterRustBuffer<List<TrideRecordParam>> {
+    override fun read(buf: ByteBuffer): List<TrideRecordParam> {
+        val len = buf.getInt()
+        return List<TrideRecordParam>(len) {
+            FfiConverterTypeTrideRecordParam.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<TrideRecordParam>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeTrideRecordParam.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<TrideRecordParam>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeTrideRecordParam.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeTrideRecordSkin: FfiConverterRustBuffer<List<TrideRecordSkin>> {
+    override fun read(buf: ByteBuffer): List<TrideRecordSkin> {
+        val len = buf.getInt()
+        return List<TrideRecordSkin>(len) {
+            FfiConverterTypeTrideRecordSkin.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<TrideRecordSkin>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeTrideRecordSkin.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<TrideRecordSkin>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeTrideRecordSkin.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceTypeTrideSkinPart: FfiConverterRustBuffer<List<TrideSkinPart>> {
+    override fun read(buf: ByteBuffer): List<TrideSkinPart> {
+        val len = buf.getInt()
+        return List<TrideSkinPart>(len) {
+            FfiConverterTypeTrideSkinPart.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<TrideSkinPart>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterTypeTrideSkinPart.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<TrideSkinPart>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterTypeTrideSkinPart.write(it, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterSequenceOptionalUInt: FfiConverterRustBuffer<List<kotlin.UInt?>> {
+    override fun read(buf: ByteBuffer): List<kotlin.UInt?> {
+        val len = buf.getInt()
+        return List<kotlin.UInt?>(len) {
+            FfiConverterOptionalUInt.read(buf)
+        }
+    }
+
+    override fun allocationSize(value: List<kotlin.UInt?>): ULong {
+        val sizeForLength = 4UL
+        val sizeForItems = value.map { FfiConverterOptionalUInt.allocationSize(it) }.sum()
+        return sizeForLength + sizeForItems
+    }
+
+    override fun write(value: List<kotlin.UInt?>, buf: ByteBuffer) {
+        buf.putInt(value.size)
+        value.iterator().forEach {
+            FfiConverterOptionalUInt.write(it, buf)
         }
     }
 }

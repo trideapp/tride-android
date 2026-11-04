@@ -1,30 +1,33 @@
 /**
- * Kotlin over Filament-Android — the applier a frame lands on: engine / view / scene / cameras, gltfio
- * loading of the archive's glTF JSON + resources, the glTF-index → entity node map, node TRS / visibility /
- * morph weights, lights and cameras on their carrier nodes, IBL + skybox + background, the view's render
- * settings and the render loop.
+ * Kotlin over Filament-Android — the applier a frame lands on: engine / view / scene / cameras, the scene
+ * built from the places of the core's scene record, the place → entity map, node TRS / visibility / morph
+ * weights, lights and cameras on their carrier places, IBL + skybox + background, the view's render settings
+ * and the render loop.
  *
  * Public API:
- *   - `attachSurface` / `detachSurface` / `resize`, `loadScene(gltfJson, resourceNames, resourceBytes)`,
- *     `render(frameTimeNanos)`, `dispose`.
- *   - Nodes: `hasNode`, `entityForGltfIndex`, `setNodeTRS`, `setNodeVisible`, `morphTargetCount`, `setMorphWeights`.
+ *   - `attachSurface` / `detachSurface` / `resize`, `loadPlaces(places)`, `render(frameTimeNanos)`, `dispose`.
+ *   - Nodes: `entityForPlace`, `setNodeTRS`, `setNodeVisible`, `morphTargetCount`, `setMorphWeights`,
+ *     `worldTransform` (checks).
  *   - Lights: `addLights`, `setLight*`; cameras: `addCameras`, `setActiveCamera`, `setCamera*`,
  *     `defaultCameraPose`, `drawnCameraPose`, `useFreeCamera`, `setViewCameraOrbit`; `setShadowingEnabled`.
  *   - Environment: `setIndirectLight`, `setIndirectLightIntensity` / `Rotation`, `setBackgroundColor`.
- *   - Render settings: `applyRenderSettings`, then live `setSaturation` / `setFogColor` / `setBloomStrength` /
- *     `setPixelation`; `renderSettingsShown` / `saturationShown` / `fogColorShown` / `bloomShown` / `msaaShown` /
+ *   - Render settings: `applyRenderSettings` / `restoreInitialRenderSettings`, then live `setSaturation` /
+ *     `setFogColor` / `setBloomStrength` / `setPixelation`; `renderSettingsShown` / `saturationShown` / `fogColorShown` / `bloomShown` / `msaaShown` /
  *     `depthOfFieldShown` / `pixelationGridShown` / `pixelationTargets` (what the view draws now, for tests).
  *
  * Non-obvious constraints:
- *   - gltfio exposes no node-index map: it is built from `getEntities()` + names (several entities with one
- *     name: match components, then translation); skin joints map through `FilamentInstance.getJointsAt`.
- *   - Only renderables join the scene from the asset; lights / cameras are added by id.
+ *   - No gltfio asset: one bridge-owned entity per place, addressed by its number (one lookup); the meshes
+ *     hang under the places (`FilamentGenerators`). `addLights` / `addCameras` build the Light (as
+ *     gltfio builds a glTF node's: a spot is FOCUSED_SPOT, at the origin looking down -Z, falloff 10 without a
+ *     range) and Camera components on a carrier place, whose pose stays the place's. A node's visibility
+ *     stops at the places under it: each takes its own value from the core.
  *   - Host-side choices made here: the default camera is the core's framing (`framingFor`), asked
  *     at load and when the buffer's aspect changes — until `useFreeCamera` takes the active scene
  *     camera's pose and perspective lens over (as iOS), which then stays until the next load;
  *     a camera's aperture (f-number) also sets shutter and ISO so exposure stays that of f/16, 1/125 s,
  *     ISO 100; a light without `castShadows` casts unless it is a point light; on the emulator's GL the
- *     scene is drawn without shadows (any shadow map blackens the frame there); the background is a solid
+ *     scene is drawn without shadows (any shadow map blackens the frame there) — decided by the backend the
+ *     engine was made on, not by the device: the emulator's Vulkan draws them; the background is a solid
  *     grey skybox until the scene sets one.
  *   - Backend: Vulkan or OpenGL as asked; an `Engine.Builder` that throws falls back to OpenGL (a Vulkan
  *     driver failure inside Filament is a native abort, not catchable). Shaders compile synchronously,
@@ -36,6 +39,8 @@
  *     frame from the switch, the size, the buffer and its pixels per dp (`resize`) in the core's grid
  *     (`pixelationGrid`); its targets go while it is off, with the surface and in `dispose`. Its
  *     material is the library's `tride-pixelate` package (`materialPackage`, set by the scene).
+ *   - Suns: the engine is made with `enableMultipleDirectionalLights` — up to five directional
+ *     lights light, the brightest casts the shadow, as on iOS and the web.
  *   - Colour: the engine turns on Filament's 1D colour grading LUT (byte-exact Standard); the
  *     tone mapper is the core's (`toneCurve`), and the colour buffer stays Filament's default (HIGH).
  */
@@ -59,15 +64,10 @@ import com.google.android.filament.SwapChain
 import com.google.android.filament.Texture
 import com.google.android.filament.View
 import com.google.android.filament.Viewport
-import com.google.android.filament.gltfio.AssetLoader
-import com.google.android.filament.gltfio.FilamentAsset
 import com.google.android.filament.gltfio.Gltfio
-import com.google.android.filament.gltfio.ResourceLoader
 import com.google.android.filament.gltfio.UbershaderProvider
 import com.google.android.filament.utils.KTX1Loader
 import com.google.android.filament.utils.Utils
-import org.json.JSONArray
-import org.json.JSONObject
 import studio.tride.core.TrideAntiAliasing
 import studio.tride.core.TrideBloomOptions
 import studio.tride.core.TrideDefaultFraming
@@ -79,10 +79,10 @@ import studio.tride.core.TrideRenderSettings
 import studio.tride.core.TrideShadowType
 import studio.tride.core.TrideToneMapper
 import studio.tride.core.toneCurve as coreToneCurve
+import studio.tride.kit.record.RecordPlace
 import studio.tride.core.pixelationGrid as corePixelationGrid
 import java.nio.ByteBuffer
 import java.nio.ByteOrder
-import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.sqrt
 
@@ -90,10 +90,32 @@ private const val TAG = "tride.bridge"
 /** Filament's 1D colour grading LUT — Standard comes out byte for byte (the 3D LUT loses the top). */
 private const val ONE_DIMENSIONAL_LUT = "engine.color_grading.use_1d_lut"
 
+/** Up to five suns light the scene, the brightest casts the shadow (Filament's rule). */
+private fun engineConfig() = Engine.Config().apply { enableMultipleDirectionalLights = true }
+
 /** The f-number of a camera without an aperture — the core's (`CameraDefaultsTest` checks it). */
 internal const val DEFAULT_CAMERA_APERTURE = 16.0
-/** A scene camera record without `yfov` (glTF requires one for a perspective camera): 45°. */
-private const val CAMERA_FALLBACK_YFOV = Math.PI / 4
+/** gltfio's falloff of a glTF light without a range (`AssetLoader::createLight`), metres. */
+private const val GLTF_DEFAULT_FALLOFF = 10f
+/**
+ * The vertical fov of a perspective scene camera without `yfov` (glTF requires one): the core's, 60°, so a tap
+ * ray and a Look-at-Camera tag see what is drawn (`CameraDefaultsTest` checks it).
+ */
+internal const val DEFAULT_CAMERA_YFOV = Math.PI / 3
+/** The default camera's lens before the core framed the scene: 45°, as the core's framing and iOS. */
+private const val DEFAULT_VIEW_YFOV = Math.PI / 4
+
+/**
+ * The half width and half height an orthographic camera draws on a view of [aspect] (width / height): glTF
+ * xmag / ymag are the half-extents of the authored frame (2.0.1 §3.10.3.4: no crop, no non-uniform scaling), so
+ * the view is filled at a uniform scale with that frame whole inside — half height max(ymag, xmag / aspect), half
+ * width that times aspect. The web player's `orthoHalfExtents`, the Swift bridge and the core's tap ray take
+ * the same rule (E6-O; `OrthoHalfExtentsTest`).
+ */
+internal fun orthoHalfExtents(xmag: Double, ymag: Double, aspect: Double): Pair<Double, Double> {
+    val halfH = max(ymag, xmag / aspect)
+    return Pair(halfH * aspect, halfH)
+}
 
 /** A manifest light for [FilamentSceneBridge.addLights] — Euler already resolved to a `-Z` direction. */
 internal class LightSpec(
@@ -107,8 +129,7 @@ internal class LightSpec(
     val castShadows: Boolean?,
     val position: DoubleArray?,
     val direction: DoubleArray,
-    val gltfIndex: Int?,
-    val carrierGltfIndex: Int?,
+    val carrierPlace: Int?,
 )
 
 /** A manifest camera for [FilamentSceneBridge.addCameras]; its pose lives on the carrier node. */
@@ -122,8 +143,8 @@ internal class CameraSpec(
     val zfar: Double?,
     val focusDistance: Double?,
     val aperture: Double?,
-    val carrierGltfIndex: Int?,
-    val focusTargetGltfIndex: Int?,
+    val carrierPlace: Int?,
+    val focusTargetPlace: Int?,
 )
 
 /** The bridge's default camera, as the runtime's host camera for picking. */
@@ -131,8 +152,6 @@ internal class HostCameraPose(val position: DoubleArray, val rotation: DoubleArr
 
 internal class FilamentSceneBridge(
     preferredBackend: Engine.Backend,
-    /** The emulator's GL (SwiftShader or the host-GPU translator): shadow maps blacken the frame — drawn without shadows. */
-    private val softwareRenderer: Boolean = false,
 ) {
     companion object {
         private val initialised = lazy {
@@ -141,6 +160,7 @@ internal class FilamentSceneBridge(
             Utils.init()
             true
         }
+        /** The far plane of a camera without `zfar` (glTF: infinite): Filament needs a finite one, 1000 m. */
         private const val INFINITE_FAR = 1000.0
         private const val MAX_SATURATION = 2f
         /** Said once a process: the GPU's targets cannot hold half floats (R-DegradeNoticeWarnOnce). */
@@ -149,12 +169,18 @@ internal class FilamentSceneBridge(
 
     val engine: Engine
     val backend: Engine.Backend
+    /**
+     * The engine draws with the emulator's GL (ANGLE over SwiftShader, or the host-GPU translator), decided by the
+     * backend the engine was made on (the OpenGL fallback included), not by the device: the emulator's Vulkan draws
+     * shadow maps, its GL draws any frame with one black.
+     */
+    private val emulatorGl: Boolean
     private val renderer: Renderer
     /** The Filament scene — for the generators applier that lives beside the bridge. */
     val filamentScene: Scene
     /** Procedural generators (trunks, module batches, pulses) — attached by `TrideKitScene` with the runtime's assets. */
     var generators: FilamentGenerators? = null
-        set(value) { field?.dispose(); field = value; value?.asset = asset }
+        set(value) { field?.dispose(); field = value }
     private val view: View
     private val defaultCameraEntity: Int
     private val defaultCamera: Camera
@@ -177,18 +203,18 @@ internal class FilamentSceneBridge(
     var needsRender = true
 
     private val materialProvider: UbershaderProvider
-    private val assetLoader: AssetLoader
-    private val resourceLoader: ResourceLoader
-    private var asset: FilamentAsset? = null
+    /** gltfio's ubershader provider: the record's standard-form instances are made through it. */
+    internal val ubershaders: UbershaderProvider get() = materialProvider
 
     private class NodeState(val entity: Int, var t: DoubleArray, var r: DoubleArray, var s: DoubleArray)
     private val nodeStates = ArrayList<NodeState>()
-    /** Node entities whose own renderable gives way to a mesh drawn under them — off whatever their visibility. */
-    private val meshReplaced = HashSet<Int>()
     private val indexToSlot = HashMap<Int, Int>()
+    /** The entities [loadPlaces] made, one per place in order (bridge-owned, as are their components). */
+    private val placeEntities = ArrayList<Int>()
+    private val placeEntitySet = HashSet<Int>()
 
     private val lightEntities = HashMap<String, Int>()
-    /** Lights this bridge created (no glTF light to reuse) — gltfio does not own them, `dispose` does. */
+    /** Lights this bridge created off any carrier place — `dispose` frees them. */
     private val builtLights = ArrayList<Int>()
     private val carrierOwnedLights = HashSet<String>()
 
@@ -229,11 +255,13 @@ internal class FilamentSceneBridge(
     private var pixelationUnavailable = false
     /** What the pass was last configured from — the grid is asked again only when one of them moved. */
     private var pixelationInputs: List<Any>? = null
+    /** The View options this view was made with (`restoreInitialRenderSettings`); taken at the end of `init`. */
+    private val initialRenderOptions: ViewRenderOptions
 
     /** `assets/tride/materials/<name>.filamat` bytes of the library (set by the scene that attaches). */
     var materialPackage: ((String) -> ByteArray?)? = null
 
-    /** The core's default camera for a view aspect (`TrideScene.defaultFraming`); set by the scene before `loadScene`. */
+    /** The core's default camera for a view aspect (`TrideScene.defaultFraming`); set by the scene before `loadPlaces`. */
     var framingFor: ((Double) -> TrideDefaultFraming)? = null
     /** The aspect the default camera was last framed for; 0 = not framed for this scene yet. */
     private var framedAspect = 0.0
@@ -247,17 +275,18 @@ internal class FilamentSceneBridge(
         var created: Engine? = null
         var used = preferredBackend
         try {
-            created = Engine.Builder().backend(preferredBackend).feature("backend.disable_parallel_shader_compile", true).feature(ONE_DIMENSIONAL_LUT, true).build()
+            created = Engine.Builder().backend(preferredBackend).config(engineConfig()).feature("backend.disable_parallel_shader_compile", true).feature(ONE_DIMENSIONAL_LUT, true).build()
         } catch (e: Throwable) {
             Log.e(TAG, "Engine($preferredBackend) failed: ${e.message}")
         }
         if (created == null && preferredBackend != Engine.Backend.OPENGL) {
             Log.w(TAG, "Engine($preferredBackend) unavailable — falling back to OPENGL")
             used = Engine.Backend.OPENGL
-            created = Engine.Builder().backend(Engine.Backend.OPENGL).feature("backend.disable_parallel_shader_compile", true).feature(ONE_DIMENSIONAL_LUT, true).build()
+            created = Engine.Builder().backend(Engine.Backend.OPENGL).config(engineConfig()).feature("backend.disable_parallel_shader_compile", true).feature(ONE_DIMENSIONAL_LUT, true).build()
         }
         engine = created ?: error("Filament Engine could not be created on any backend")
         backend = used
+        emulatorGl = used == Engine.Backend.OPENGL && isEmulator()
         renderer = engine.createRenderer()
         filamentScene = engine.createScene()
         defaultCameraEntity = EntityManager.get().create()
@@ -267,8 +296,10 @@ internal class FilamentSceneBridge(
         view.scene = filamentScene
         view.camera = defaultCamera
         view.isPostProcessingEnabled = true
-        view.setShadowingEnabled(shadowingFor(true))
+        val shadowing = shadowingFor(true)
+        view.setShadowingEnabled(shadowing)
         view.setScreenSpaceRefractionEnabled(true)
+        initialRenderOptions = ViewRenderOptions(view, shadowing)
         // The scene's background: a solid skybox, so it goes through exposure and tone mapping.
         solidSkybox = Skybox.Builder().color(0.07f, 0.07f, 0.07f, 1f).build(engine)
         filamentScene.skybox = solidSkybox
@@ -283,8 +314,6 @@ internal class FilamentSceneBridge(
         }
 
         materialProvider = UbershaderProvider(engine)
-        assetLoader = AssetLoader(engine, materialProvider, EntityManager.get())
-        resourceLoader = ResourceLoader(engine, true)
         resize(width, height)
         Log.i(TAG, "Filament ${BuildConfig.FILAMENT_VERSION} engine on ${engine.backend}")
     }
@@ -345,7 +374,6 @@ internal class FilamentSceneBridge(
     fun render(frameTimeNanos: Long): Boolean {
         val sc = swapChain ?: return false
         if (disposed) return false
-        asset?.instance?.animator?.updateBoneMatrices()
         updateFocusTarget()
         syncPixelation()
         if (!renderer.beginFrame(sc, frameTimeNanos)) return false
@@ -369,10 +397,17 @@ internal class FilamentSceneBridge(
             EntityManager.get().destroy(e)
         }
         builtLights.clear()
-        asset?.let { filamentScene.removeEntities(it.entities); assetLoader.destroyAsset(it) }
-        asset = null
-        resourceLoader.destroy()
-        assetLoader.destroy()
+        // The places and the Light / Camera components built on carriers, after what hung under them.
+        val tm = engine.transformManager
+        for (e in placeEntities) {
+            filamentScene.removeEntity(e)
+            if (engine.lightManager.hasComponent(e)) engine.lightManager.destroy(e)
+            if (engine.getCameraComponent(e) != null) engine.destroyCameraComponent(e)
+            if (tm.hasComponent(e)) tm.destroy(e)
+            EntityManager.get().destroy(e)
+        }
+        placeEntities.clear()
+        placeEntitySet.clear()
         materialProvider.destroyMaterials()
         materialProvider.destroy()
         // The pixelation pass lets go of the scene view and frees its targets while the view is alive.
@@ -391,117 +426,36 @@ internal class FilamentSceneBridge(
     }
 
     // ---------------------------------------------------------------------------------------------
-    // Asset loading + node map
+    // The scene's places
     // ---------------------------------------------------------------------------------------------
 
     /**
-     * The scene's glTF JSON with its external resources (named as the glTF's URIs name them, read through
-     * [resourceBytes] — the runtime's copy of the archive) through gltfio; builds the node map.
+     * The scene from the core's record — one entity per place, in order, under the
+     * place its parent names, at the place's local pose (quaternion `[x, y, z, w]`). Place `i` is node index `i`.
      */
-    fun loadScene(gltfJson: ByteArray, resourceNames: List<String>, resourceBytes: (String) -> ByteArray?) {
+    fun loadPlaces(places: List<RecordPlace>) {
         check(!disposed) { "FilamentSceneBridge is disposed" }
-        check(asset == null) { "re-load is not supported — create a new bridge" }
-        for (name in resourceNames) {
-            resourceBytes(name)?.let { resourceLoader.addResourceData(name, ByteBuffer.wrap(it)) }
+        check(placeEntities.isEmpty()) { "re-load is not supported — create a new bridge" }
+        nodeStates.clear(); indexToSlot.clear()
+        val tm = engine.transformManager
+        for ((i, place) in places.withIndex()) {
+            val e = EntityManager.get().create()
+            tm.create(e)
+            placeEntities += e
+            placeEntitySet += e
+            indexToSlot[i] = nodeStates.size
+            nodeStates += NodeState(e, place.translation.copyOf(), place.rotation.copyOf(), place.scale.copyOf())
         }
-        val gltf = ByteBuffer.allocateDirect(gltfJson.size).put(gltfJson).apply { rewind() }
-        val loaded = assetLoader.createAsset(gltf) ?: throw IllegalStateException("AssetLoader.createAsset returned null (malformed glTF?)")
-        resourceLoader.loadResources(loaded)
-        // gltfio hands the vertex / index uploads the cached resource bytes themselves (no copy) and the
-        // driver thread reads them later: evicting before it has would free memory an upload still reads
-        // — a GC in between (another scene loading) left meshes drawn from garbage. Wait for the uploads,
-        // then let the bytes go.
-        engine.flushAndWait()
-        resourceLoader.evictResourceData()
-        // Renderables only; lights / cameras join by id.
-        filamentScene.addEntities(loaded.renderableEntities)
-        asset = loaded
-        generators?.asset = loaded
-        buildNodeMap(loaded, gltfJson)
+        for ((i, place) in places.withIndex()) {
+            val ti = tm.getInstance(placeEntities[i])
+            place.parent?.let { parent -> placeEntities.getOrNull(parent)?.let { tm.setParent(ti, tm.getInstance(it)) } }
+            tm.setTransform(ti, LocalMatrix.of(place.translation, place.rotation, place.scale))
+        }
         framedAspect = 0.0
         poseTaken = false
         frameDefaultCamera()
         needsRender = true
-        Log.i(TAG, "scene loaded: ${loaded.entities.size} entities, ${loaded.renderableEntities.size} renderables, ${nodeStates.size} node states, ${indexToSlot.size} glTF indices")
-    }
-
-    private fun buildNodeMap(loaded: FilamentAsset, gltfJson: ByteArray) {
-        nodeStates.clear(); indexToSlot.clear(); meshReplaced.clear()
-        val tm = engine.transformManager
-        val lm = engine.lightManager
-        val rm = engine.renderableManager
-        val entityToSlot = HashMap<Int, Int>()
-        val slotsByName = HashMap<String, ArrayList<Int>>()
-        val tmp = FloatArray(16)
-        for (e in loaded.entities) {
-            if (!tm.hasComponent(e)) continue
-            val ti = tm.getInstance(e)
-            val (t, r, s) = TrideMath.decomposeTRS(tm.getTransform(ti, tmp))
-            val slot = nodeStates.size
-            nodeStates += NodeState(e, t, r, s)
-            entityToSlot[e] = slot
-            val name = loaded.getName(e)
-            if (!name.isNullOrEmpty()) slotsByName.getOrPut(name) { ArrayList() } += slot
-        }
-        val json = JSONObject(String(gltfJson, Charsets.UTF_8))
-        val nodes = json.optJSONArray("nodes") ?: JSONArray()
-        val skins = json.optJSONArray("skins")
-        val assigned = HashSet<Int>()
-        val instance = loaded.instance
-        if (skins != null && instance != null) {
-            val skinCount = minOf(instance.skinCount, skins.length())
-            for (s in 0 until skinCount) {
-                val joints = skins.optJSONObject(s)?.optJSONArray("joints") ?: continue
-                val jointEntities = instance.getJointsAt(s)
-                val limit = minOf(joints.length(), jointEntities.size)
-                for (j in 0 until limit) {
-                    val gltfIdx = joints.optInt(j, -1)
-                    if (gltfIdx < 0 || gltfIdx >= nodes.length()) continue
-                    val slot = entityToSlot[jointEntities[j]] ?: continue
-                    indexToSlot[gltfIdx] = slot
-                    assigned += slot
-                }
-            }
-        }
-        for (i in 0 until nodes.length()) {
-            if (indexToSlot.containsKey(i)) continue
-            val node = nodes.optJSONObject(i) ?: continue
-            val name = node.optString("name", "")
-            if (name.isEmpty()) continue
-            val candidates = slotsByName[name] ?: continue
-            if (candidates.isEmpty()) continue
-            var chosen = candidates.last()
-            if (candidates.size > 1) {
-                // The same name on several entities — match the node's components, then its translation.
-                val ext = node.optJSONObject("extensions")
-                val wantsCamera = node.has("camera")
-                val wantsLight = ext?.has("KHR_lights_punctual") == true
-                val wantsMesh = node.has("mesh")
-                val tr = node.optJSONArray("translation")
-                val tx = tr?.optDouble(0, 0.0) ?: 0.0
-                val ty = tr?.optDouble(1, 0.0) ?: 0.0
-                val tz = tr?.optDouble(2, 0.0) ?: 0.0
-                val sameKind = candidates.filter { slot ->
-                    if (slot in assigned) return@filter false
-                    val e = nodeStates[slot].entity
-                    val isCamera = engine.getCameraComponent(e) != null
-                    val isLight = lm.hasComponent(e)
-                    val isMesh = rm.hasComponent(e)
-                    isCamera == wantsCamera && isLight == wantsLight && isMesh == wantsMesh
-                }
-                val samePlace = sameKind.filter { slot ->
-                    val p = nodeStates[slot].t
-                    abs(p[0] - tx) < 1e-5 && abs(p[1] - ty) < 1e-5 && abs(p[2] - tz) < 1e-5
-                }
-                val pool = if (samePlace.isNotEmpty()) samePlace else sameKind
-                chosen = pool.firstOrNull() ?: candidates.firstOrNull { it !in assigned } ?: chosen
-                if (pool.size != 1) {
-                    loadProblem(name, "buildNodeMap: node $i name '$name' is shared by ${candidates.size} entities and ${pool.size} fit it equally — give nodes unique names")
-                }
-            }
-            assigned += chosen
-            indexToSlot[i] = chosen
-        }
+        Log.i(TAG, "scene built from ${places.size} places")
     }
 
     /** Pose and lens of the default camera from the core's framing at the buffer's aspect. */
@@ -574,7 +528,7 @@ internal class FilamentSceneBridge(
         val distance = if (along > 1e-3) along else max(last?.orbitStart?.distance ?: 0.0, 1.0)
         val taken = Framing(
             pose = FramingPose(eye, DoubleArray(3) { eye[it] + forward[it] * distance }),
-            yfov = if (rec.perspective) rec.yfov else last?.yfov ?: CAMERA_FALLBACK_YFOV,
+            yfov = if (rec.perspective) rec.yfov else last?.yfov ?: DEFAULT_VIEW_YFOV,
             near = if (rec.perspective) rec.znear else last?.near ?: rec.znear,
             far = if (rec.perspective) rec.zfar?.takeIf { it > rec.znear } ?: INFINITE_FAR else last?.far ?: INFINITE_FAR,
         )
@@ -608,14 +562,21 @@ internal class FilamentSceneBridge(
     // Nodes
     // ---------------------------------------------------------------------------------------------
 
-    fun hasNode(gltfIndex: Int): Boolean = indexToSlot.containsKey(gltfIndex)
+    fun entityForPlace(place: Int): Int? = indexToSlot[place]?.let { nodeStates[it].entity }
 
-    fun entityForGltfIndex(gltfIndex: Int): Int? = indexToSlot[gltfIndex]?.let { nodeStates[it].entity }
+    /** The world matrix (column-major) of node index [index] as the TransformManager composes it; `null` without one. */
+    fun worldTransform(index: Int): FloatArray? {
+        if (disposed) return null
+        val e = entityForPlace(index) ?: return null
+        val tm = engine.transformManager
+        if (!tm.hasComponent(e)) return null
+        return tm.getWorldTransform(tm.getInstance(e), FloatArray(16))
+    }
 
     /** Local TRS of a node; a `null` channel keeps the current one. */
-    fun setNodeTRS(gltfIndex: Int, t: DoubleArray?, r: DoubleArray?, s: DoubleArray?) {
+    fun setNodeTRS(place: Int, t: DoubleArray?, r: DoubleArray?, s: DoubleArray?) {
         if (disposed) return
-        val slot = indexToSlot[gltfIndex] ?: return
+        val slot = indexToSlot[place] ?: return
         val state = nodeStates[slot]
         if (t != null) state.t = t
         if (r != null) state.r = r
@@ -623,68 +584,40 @@ internal class FilamentSceneBridge(
         val tm = engine.transformManager
         val ti = tm.getInstance(state.entity)
         if (ti == 0) return
-        tm.setTransform(ti, TrideMath.composeTRS(state.t, state.r, state.s))
+        tm.setTransform(ti, LocalMatrix.of(state.t, state.r, state.s))
         needsRender = true
     }
 
     /** Visibility layer bit 0 on the node and every TransformManager descendant. */
-    fun setNodeVisible(gltfIndex: Int, visible: Boolean) {
+    fun setNodeVisible(place: Int, visible: Boolean) {
         if (disposed) return
-        val slot = indexToSlot[gltfIndex] ?: return
+        val slot = indexToSlot[place] ?: return
         setLayerRecursive(nodeStates[slot].entity, visible)
-        needsRender = true
-    }
-
-    /**
-     * The node's OWN renderable gives way to a mesh drawn under it (`true`: off, whatever its visibility;
-     * what it hosts keeps following the node) or takes its place back (`false`: shown — the caller re-applies node
-     * visibility after). Cleared with the scene.
-     */
-    fun setNodeMeshReplaced(gltfIndex: Int, replaced: Boolean) {
-        if (disposed) return
-        val slot = indexToSlot[gltfIndex] ?: return
-        val entity = nodeStates[slot].entity
-        if (replaced) meshReplaced += entity else meshReplaced -= entity
-        val rm = engine.renderableManager
-        if (rm.hasComponent(entity)) rm.setLayerMask(rm.getInstance(entity), 0x01, if (replaced) 0x00 else 0x01)
         needsRender = true
     }
 
     private fun setLayerRecursive(entity: Int, visible: Boolean) {
         val rm = engine.renderableManager
         val tm = engine.transformManager
-        val shown = visible && entity !in meshReplaced
-        if (rm.hasComponent(entity)) rm.setLayerMask(rm.getInstance(entity), 0x01, if (shown) 0x01 else 0x00)
+        if (rm.hasComponent(entity)) rm.setLayerMask(rm.getInstance(entity), 0x01, if (visible) 0x01 else 0x00)
         if (!tm.hasComponent(entity)) return
         val ti = tm.getInstance(entity)
         val count = tm.getChildCount(ti)
         if (count == 0) return
         val children = tm.getChildren(ti, IntArray(count))
-        for (child in children) setLayerRecursive(child, visible)
+        // A place under it is another node: it takes its own value.
+        for (child in children) if (child !in placeEntitySet) setLayerRecursive(child, visible)
     }
 
-    /** How many morph targets the node's renderable has; 0 when it has none (or is unknown). */
-    fun morphTargetCount(gltfIndex: Int): Int {
-        if (disposed) return 0
-        val slot = indexToSlot[gltfIndex] ?: return 0
-        val rm = engine.renderableManager
-        val e = nodeStates[slot].entity
-        return if (rm.hasComponent(e)) rm.getMorphTargetCount(rm.getInstance(e)) else 0
+    /** How many morph targets the file mesh drawn under [place] has; 0 when it has none (or is unknown). */
+    fun morphTargetCount(place: Int): Int {
+        if (disposed || !indexToSlot.containsKey(place)) return 0
+        return generators?.morphTargetCountAt(place) ?: 0
     }
 
-    fun setMorphWeights(gltfIndex: Int, weights: FloatArray) {
-        if (disposed || weights.isEmpty()) return
-        val slot = indexToSlot[gltfIndex] ?: return
-        val rm = engine.renderableManager
-        val e = nodeStates[slot].entity
-        if (!rm.hasComponent(e)) return
-        val ri = rm.getInstance(e)
-        val count = minOf(weights.size, rm.getMorphTargetCount(ri))
-        if (count <= 0) return
-        // Filament only checks the upper bound (256): a longer array than the target count throws in
-        // the frame callback — hand it exactly `count` lanes.
-        rm.setMorphWeights(ri, if (weights.size == count) weights else weights.copyOf(count), 0)
-        needsRender = true
+    fun setMorphWeights(place: Int, weights: FloatArray) {
+        if (disposed || weights.isEmpty() || !indexToSlot.containsKey(place)) return
+        if (generators?.setMorphWeightsAt(place, weights) == true) needsRender = true
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -710,21 +643,21 @@ internal class FilamentSceneBridge(
         for (spec in lights) {
             val type = lightType(spec.type)
             var entity = 0
-            var reused = false
             var poseOnCarrier = false
-            spec.carrierGltfIndex?.let { idx ->
-                val candidate = entityForGltfIndex(idx)
-                if (candidate != null && lm.hasComponent(candidate)) {
-                    entity = candidate; reused = true; poseOnCarrier = true
+            spec.carrierPlace?.let { idx ->
+                val candidate = entityForPlace(idx)
+                if (candidate != null && candidate in placeEntitySet && !lm.hasComponent(candidate)) {
+                    // A carrier place: the light is built on it as gltfio builds a glTF node's; the pose
+                    // is the place's, the place teardown frees it.
+                    val built = if (type == LightManager.Type.SPOT) LightManager.Type.FOCUSED_SPOT else type
+                    LightManager.Builder(built).direction(0f, 0f, -1f).falloff(GLTF_DEFAULT_FALLOFF)
+                        .castShadows(castsShadows(spec, built)).build(engine, candidate)
+                    entity = candidate; poseOnCarrier = true
                 } else {
-                    loadProblem(spec.id, "addLights: '${spec.id}' carrier node $idx has no Light component — the light keeps its authored pose")
+                    loadProblem(spec.id, "addLights: '${spec.id}' carrier place $idx is not a free place of the scene — the light keeps its authored pose")
                 }
             }
-            if (!reused) spec.gltfIndex?.let { idx ->
-                val candidate = entityForGltfIndex(idx)
-                if (candidate != null && lm.hasComponent(candidate)) { entity = candidate; reused = true }
-            }
-            if (!reused) {
+            if (!poseOnCarrier) {
                 entity = EntityManager.get().create()
                 LightManager.Builder(type).castShadows(castsShadows(spec, type)).build(engine, entity)
                 builtLights += entity
@@ -750,7 +683,7 @@ internal class FilamentSceneBridge(
             if (poseOnCarrier) carrierOwnedLights += spec.id else carrierOwnedLights -= spec.id
             if (tm.hasComponent(entity)) {
                 val w = tm.getWorldTransform(tm.getInstance(entity), FloatArray(16))
-                Log.i(TAG, "addLights: '${spec.id}' ${if (poseOnCarrier) "carrier-anchored" else if (reused) "imported-reuse" else "bridge-built"} world=(${w[12]}, ${w[13]}, ${w[14]})")
+                Log.i(TAG, "addLights: '${spec.id}' ${if (poseOnCarrier) "carrier-anchored" else "bridge-built"} world=(${w[12]}, ${w[13]}, ${w[14]})")
             }
         }
         needsRender = true
@@ -763,6 +696,23 @@ internal class FilamentSceneBridge(
     }
 
     fun hasLight(id: String) = lightEntities.containsKey(id)
+
+    /**
+     * Where light [id] shines from and towards in the world, `[px, py, pz, dx, dy, dz]`: its own position and
+     * direction through its entity's world transform (none: as set). For checks; `null` for no such light.
+     */
+    internal fun lightWorldPose(id: String): DoubleArray? {
+        val li = lightInstance(id) ?: return null
+        val e = lightEntities.getValue(id)
+        val lm = engine.lightManager
+        val p = lm.getPosition(li, FloatArray(3))
+        val d = lm.getDirection(li, FloatArray(3))
+        val tm = engine.transformManager
+        val w = if (tm.hasComponent(e)) tm.getWorldTransform(tm.getInstance(e), FloatArray(16)) else floatArrayOf(1f, 0f, 0f, 0f, 0f, 1f, 0f, 0f, 0f, 0f, 1f, 0f, 0f, 0f, 0f, 1f)
+        val pos = DoubleArray(3) { r -> (w[r] * p[0] + w[4 + r] * p[1] + w[8 + r] * p[2] + w[12 + r]).toDouble() }
+        val dir = TrideMath.normalize3(DoubleArray(3) { r -> (w[r] * d[0] + w[4 + r] * d[1] + w[8 + r] * d[2]).toDouble() })
+        return pos + dir
+    }
     fun lightPoseOwnedByCarrier(id: String) = id in carrierOwnedLights
 
     fun setLightColor(id: String, r: Double, g: Double, b: Double) {
@@ -788,7 +738,7 @@ internal class FilamentSceneBridge(
      * or VSM — pure black: there the scene renders without shadows, said once.
      */
     private fun shadowingFor(requested: Boolean): Boolean {
-        if (!softwareRenderer || !requested) return requested
+        if (!emulatorGl || !requested) return requested
         if (!warnedShadows) {
             warnedShadows = true
             Log.w(TAG, "emulator GL: shadow maps render the frame black here — drawing without shadows")
@@ -796,7 +746,7 @@ internal class FilamentSceneBridge(
         return false
     }
 
-    /** A host knob: shadows off (on the emulator they stay off whatever is asked). */
+    /** A host knob: shadows off (on the emulator's GL they stay off whatever is asked). */
     fun setShadowingEnabled(enabled: Boolean) {
         if (disposed) return
         view.setShadowingEnabled(shadowingFor(enabled)); needsRender = true
@@ -854,8 +804,13 @@ internal class FilamentSceneBridge(
         if (rec.perspective) {
             cam.setProjection(Math.toDegrees(rec.yfov), aspect, rec.znear, far, Camera.Fov.VERTICAL)
         } else {
-            cam.setProjection(Camera.Projection.ORTHO, -rec.xmag, rec.xmag, -rec.ymag, rec.ymag, rec.znear, far)
+            // Resize re-applies it on the new aspect.
+            val (halfW, halfH) = orthoHalfExtents(rec.xmag, rec.ymag, aspect)
+            cam.setProjection(Camera.Projection.ORTHO, -halfW, halfW, -halfH, halfH, rec.znear, far)
         }
+        // The view's aspect is the frame's: a camera scaled by 1 / the glTF aspect ratio (as gltfio scales its own)
+        // would squeeze the picture — the scaling stays (1, 1).
+        cam.setScaling(1.0, 1.0)
         applyAperture(cam, rec.aperture)
         cam.setFocusDistance(max(rec.focusDistance, 0.0).toFloat())
     }
@@ -879,22 +834,24 @@ internal class FilamentSceneBridge(
     fun addCameras(specs: List<CameraSpec>) {
         if (disposed) return
         for (spec in specs) {
-            val entity = spec.carrierGltfIndex?.let { entityForGltfIndex(it) }
+            val entity = spec.carrierPlace?.let { entityForPlace(it) }
+            // A carrier place gets its Camera component here, as gltfio gives a glTF node its own.
+            if (entity != null && entity in placeEntitySet && engine.getCameraComponent(entity) == null) engine.createCamera(entity)
             if (entity == null || engine.getCameraComponent(entity) == null) {
-                loadProblem(spec.id, "addCameras: '${spec.id}' has no carrier node with a Camera component — skipped, the default camera stays")
+                loadProblem(spec.id, "addCameras: '${spec.id}' has no carrier place with a Camera component — skipped, the default camera stays")
                 continue
             }
             val rec = CameraRecord(
                 entity = entity,
                 perspective = spec.perspective,
-                yfov = spec.yfov?.takeIf { it > 0 } ?: CAMERA_FALLBACK_YFOV,
+                yfov = spec.yfov?.takeIf { it > 0 } ?: DEFAULT_CAMERA_YFOV,
                 xmag = spec.xmag?.takeIf { it > 0 } ?: 1.0,
                 ymag = spec.ymag?.takeIf { it > 0 } ?: 1.0,
                 znear = spec.znear.takeIf { it > 0 } ?: 0.1,
                 zfar = spec.zfar?.takeIf { it > 0 },
                 focusDistance = spec.focusDistance?.takeIf { it > 0 } ?: 0.0,
                 aperture = spec.aperture?.takeIf { it > 0 } ?: DEFAULT_CAMERA_APERTURE,
-                focusTarget = spec.focusTargetGltfIndex?.let { entityForGltfIndex(it) },
+                focusTarget = spec.focusTargetPlace?.let { entityForPlace(it) },
             )
             cameras[spec.id] = rec
             applyProjection(rec)
@@ -905,6 +862,10 @@ internal class FilamentSceneBridge(
             }
         }
     }
+
+    /** The scaling of camera [id]'s component (`[x, y, …]`, checks); `null` without one. */
+    internal fun cameraScaling(id: String): DoubleArray? =
+        cameras[id]?.let { engine.getCameraComponent(it.entity) }?.getScaling(null)
 
     fun setActiveCamera(id: String?) {
         if (disposed) return
@@ -1148,7 +1109,7 @@ internal class FilamentSceneBridge(
         needsRender = true
     }
 
-    /** The settings the view was given last (`null` = none yet: Filament's defaults) — what a test reads back. */
+    /** The settings the view was given last (`null` = none: what a new view draws) — what a test reads back. */
     internal var renderSettingsShown: TrideRenderSettings? = null
         private set
 
@@ -1244,5 +1205,83 @@ internal class FilamentSceneBridge(
         saturation = liveSaturation?.toFloat()?.coerceIn(0f, MAX_SATURATION) ?: authoredSaturation
         rebuildColorGrading()
         Log.i(TAG, "applyRenderSettings: aa=${s.antiAliasing} toneMapping=${s.toneMapping.`operator`} exposure=$exposure bloom=${s.bloom.enabled} ssao=${s.ssao.enabled} dof=${s.depthOfField.enabled}")
+    }
+
+    /** Whether the view draws a colour grading of the bridge's own (`null` = Filament's default) — what a test reads back. */
+    internal val colorGradingShown: Boolean get() = colorGrading != null
+
+    /**
+     * Back to the render settings this view was made with — what it draws for a scene that sets none: every
+     * option `applyRenderSettings` sets as the view had it (`initialRenderOptions`), no colour grading of the
+     * bridge's own, the authored leaves as `init` has them. The live leaves the frames wrote are written again
+     * through their setters, as a full frame writes them on a new view; so a scene without render settings
+     * whose knobs are cleared draws as a new view of it.
+     */
+    fun restoreInitialRenderSettings() {
+        if (disposed) return
+        initialRenderOptions.applyTo(view)
+        renderSettingsShown = null
+        authoredBloom = null
+        authoredPixelation = TridePixelationOptions(false, 8f)
+        toneMapper = TrideToneMapper.Aces
+        exposure = 0f
+        luminanceScaling = false
+        gamutMapping = false
+        saturation = 1f
+        authoredSaturation = 1f
+        view.colorGrading = null
+        colorGrading?.let { engine.destroyColorGrading(it) }
+        colorGrading = null
+        fogOptions = View.FogOptions()
+        val saturationWritten = liveSaturation
+        val fogWritten = liveFogColor
+        liveSaturation = null
+        liveFogColor = null
+        saturationWritten?.let { setSaturation(it) }
+        fogWritten?.let { setFogColor(it[0].toDouble(), it[1].toDouble(), it[2].toDouble()) }
+        needsRender = true
+        Log.i(TAG, "restoreInitialRenderSettings: the view's own options again")
+    }
+}
+
+/**
+ * Every View option `applyRenderSettings` sets, as a view had it when made (Filament Java keeps each options
+ * block on the View; the bridge replaces blocks, never edits one it handed over). Java has no getter for the
+ * shadow type — Filament's default, PCF, which `init` leaves — and only a package-private one for shadowing:
+ * the value `init` set is passed in.
+ */
+private class ViewRenderOptions(view: View, private val shadowing: Boolean) {
+    private val antiAliasing = view.antiAliasing
+    private val dithering = view.dithering
+    private val postProcessing = view.isPostProcessingEnabled
+    private val msaa = view.multiSampleAntiAliasingOptions
+    private val taa = view.temporalAntiAliasingOptions
+    private val ssao = view.ambientOcclusionOptions
+    private val bloom = view.bloomOptions
+    private val fog = view.fogOptions
+    private val vignette = view.vignetteOptions
+    private val dynamicResolution = view.dynamicResolutionOptions
+    private val depthOfField = view.depthOfFieldOptions
+    private val ssr = view.screenSpaceReflectionsOptions
+    private val vsm = view.vsmShadowOptions
+    private val softShadows = view.softShadowOptions
+
+    fun applyTo(view: View) {
+        view.antiAliasing = antiAliasing
+        view.dithering = dithering
+        view.isPostProcessingEnabled = postProcessing
+        view.setShadowingEnabled(shadowing)
+        view.setShadowType(View.ShadowType.PCF)
+        view.multiSampleAntiAliasingOptions = msaa
+        view.temporalAntiAliasingOptions = taa
+        view.ambientOcclusionOptions = ssao
+        view.bloomOptions = bloom
+        view.fogOptions = fog
+        view.vignetteOptions = vignette
+        view.dynamicResolutionOptions = dynamicResolution
+        view.depthOfFieldOptions = depthOfField
+        view.screenSpaceReflectionsOptions = ssr
+        view.vsmShadowOptions = vsm
+        view.softShadowOptions = softShadows
     }
 }

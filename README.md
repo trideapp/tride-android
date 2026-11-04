@@ -1,4 +1,4 @@
-# TrideKit for Android — Tride 0.13.0
+# TrideKit for Android — Tride 0.14.0
 
 Plays Tride scenes (`.trd`) in an Android app: the Tride runtime, Filament rendering (Vulkan on a phone,
 OpenGL ES on the emulator) and a Compose view over them. A scene is built in Tride Editor ([tride-editor](https://github.com/trideapp/tride-editor)) and exported
@@ -14,7 +14,7 @@ what is new — `CHANGELOG.md`.
 
 | | |
 |---|---|
-| GitHub Packages | `studio.tride:tride-core`, `tridekit`, `tridekit-compose` 0.13.0 — this repository's Maven packages |
+| GitHub Packages | `studio.tride:tride-core`, `tridekit`, `tridekit-compose` 0.14.0 and the Filament they are built on, `studio.tride.filament:filament-android`, `gltfio-android`, `filament-utils-android` — this repository's Maven packages |
 | Releases | `TridePlayer.apk` — the example player, ready to install |
 | `maven/` | the same packages as a folder — a Maven repository for building without a token |
 | `Sources/` | the libraries' Kotlin sources: `tridekit` (the Filament bridge, `TrideKitScene`), `tridekit-compose` (`TrideSceneView`), `tride-core` (the uniffi binding over the prebuilt runtime `.so`). They also sit beside each AAR as a `-sources.jar` — Android Studio shows them when you jump into the library's code |
@@ -33,8 +33,9 @@ of the scene with its current value.
 
 ## Your own app
 
-Requirements: Kotlin 2.4, `compileSdk 37`, `minSdk 24`; ABIs `arm64-v8a` and `x86_64`. Filament and JNA come
-from Maven Central by themselves.
+Requirements: Kotlin 2.4, `compileSdk 37`, `minSdk 24`; ABIs `arm64-v8a` and `x86_64`. Filament comes
+from the TrideKit repository with TrideKit (`studio.tride.filament`, Tride's build of Filament); JNA and
+the rest come from Google and Maven Central by themselves.
 
 - The example builds with Android Gradle Plugin 8.11.1 + Gradle 8.14.3 + JDK 22 (Gradle 8.14 runs on JDK
   17–24). AGP 8.11 then warns that it was tested up to `compileSdk 36` and, with R8 (`isMinifyEnabled =
@@ -62,7 +63,10 @@ dependencyResolutionManagement {
                     credentials(PasswordCredentials::class)
                 }
             }
-            filter { includeGroup("studio.tride") }
+            filter {
+                includeGroup("studio.tride")             // TrideKit
+                includeGroup("studio.tride.filament")    // the Filament TrideKit is built on
+            }
         }
         google()
         mavenCentral()
@@ -71,8 +75,8 @@ dependencyResolutionManagement {
 ```
 
    Without a token the project still configures; the error comes only when Gradle fetches the
-   `studio.tride` packages, and it names the missing properties (`The following Gradle properties are
-   missing for 'gpr' credentials: gprUsername, gprPassword`).
+   `studio.tride` and `studio.tride.filament` packages, and it names the missing properties (`The
+   following Gradle properties are missing for 'gpr' credentials: gprUsername, gprPassword`).
 
    Without a token — the `maven/` folder of this repository: copy it into the project (e.g. as
    `tride-maven`) and use it instead of GitHub Packages:
@@ -82,7 +86,10 @@ dependencyResolutionManagement {
     repositories {
         exclusiveContent {
             forRepository { maven { url = uri(file("tride-maven")) } }
-            filter { includeGroup("studio.tride") }
+            filter {
+                includeGroup("studio.tride")             // TrideKit
+                includeGroup("studio.tride.filament")    // the Filament TrideKit is built on
+            }
         }
         google()
         mavenCentral()
@@ -94,7 +101,7 @@ dependencyResolutionManagement {
 
 ```kotlin
 android { defaultConfig { ndk { abiFilters += listOf("arm64-v8a", "x86_64") } } }   // required, see the requirements
-dependencies { implementation("studio.tride:tridekit-compose:0.13.0") }
+dependencies { implementation("studio.tride:tridekit-compose:0.14.0") }
 ```
 
 3. Put a `.trd` exported from Tride Editor into `src/main/assets/` and show it:

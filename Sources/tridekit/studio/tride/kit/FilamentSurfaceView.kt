@@ -17,6 +17,9 @@
  *     `null` = every vsync, as before; changes live (`FramePacer`).
  *   - `renderOverrides` — the host's render knobs over the scene's render settings, handed to every scene the
  *     view shows (`TrideKitScene.setRenderOverrides`); changes live, on the same view and scene.
+ *   - Every scene is built from the core's scene record; one the core hands no record of is not shown
+ *     (`scene = …` throws `IllegalStateException("scene not built: …")`, the scene shown before is gone;
+ *     `TrideSceneView` hands what the setter throws to its `onLoadError` instead).
  *
  * Non-obvious constraints:
  *   - Backend: `Backend.AUTO` = Vulkan on a device that declares Vulkan 1.1 hardware on Android 10+,
@@ -27,7 +30,7 @@
  *     tap tolerance is in points, the unit iOS and the browser send — in px a finger's jitter on a 3×
  *     screen turned a tap into a drag. Pixelation's block side is in dp too: the bridge hears the
  *     buffer's pixels per dp with every resize (the density, or the pixel scale).
- *   - One scene per engine (gltfio loads an asset once per bridge): setting a scene on a view whose engine
+ *   - One scene per engine (a bridge builds one scene for its lifetime): setting a scene on a view whose engine
  *     already took one disposes that engine and builds the next on the surface it drew to (`replaceBridge`).
  *   - Everything runs on the main thread (Choreographer, touch, Filament calls).
  *   - A render rate skips vsyncs by elapsed time: a skipped vsync neither ticks nor draws (it only polls the
@@ -196,7 +199,7 @@ public class FilamentSurfaceView @JvmOverloads constructor(
         fencedFrame = frameCount
         sceneCamera = null
         bridge.dispose()
-        bridge = FilamentSceneBridge(requestedBackend, softwareRenderer = isEmulator())
+        bridge = FilamentSceneBridge(requestedBackend)
         bridgeUsed = false
         if (uiHelper.isReadyToRender) bridge.attachSurface(holder.surface, uiHelper.swapChainFlags)
         if (bufferWidth > 0 && bufferHeight > 0) bridge.resize(bufferWidth, bufferHeight, pixelsPerDp(bufferWidth))
@@ -213,7 +216,7 @@ public class FilamentSurfaceView @JvmOverloads constructor(
             Backend.AUTO -> if (!isEmulator() && supportsVulkan(context)) Engine.Backend.VULKAN else Engine.Backend.OPENGL
         }
         requestedBackend = requested
-        bridge = FilamentSceneBridge(requested, softwareRenderer = isEmulator())
+        bridge = FilamentSceneBridge(requested)
         uiHelper.renderCallback = object : UiHelper.RendererCallback {
             override fun onNativeWindowChanged(surface: Surface) {
                 bridge.attachSurface(surface, uiHelper.swapChainFlags)
@@ -400,12 +403,13 @@ public class FilamentSurfaceView @JvmOverloads constructor(
         internal fun supportsVulkan(context: Context): Boolean =
             Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q &&
                 context.packageManager.hasSystemFeature(PackageManager.FEATURE_VULKAN_HARDWARE_VERSION, VULKAN_1_1)
-
-        internal fun isEmulator(): Boolean {
-            val hw = Build.HARDWARE.lowercase()
-            return hw.contains("ranchu") || hw.contains("goldfish") || hw.contains("cutf") ||
-                Build.FINGERPRINT.contains("generic") || Build.MODEL.contains("Emulator") ||
-                Build.MODEL.contains("Android SDK built for")
-        }
     }
+}
+
+/** The process runs on an Android emulator (the backend choice, and the bridge's shadows on the emulator's GL). */
+internal fun isEmulator(): Boolean {
+    val hw = Build.HARDWARE.lowercase()
+    return hw.contains("ranchu") || hw.contains("goldfish") || hw.contains("cutf") ||
+        Build.FINGERPRINT.contains("generic") || Build.MODEL.contains("Emulator") ||
+        Build.MODEL.contains("Android SDK built for")
 }

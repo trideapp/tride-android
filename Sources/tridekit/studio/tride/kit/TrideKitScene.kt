@@ -17,24 +17,34 @@
  *   - Render knobs: `setRenderOverrides(TrideRenderOverrides?)` / `renderOverrides` (MSAA, bloom, shadows, depth
  *     of field over the scene's render settings; `null` = none), `sceneRenderSettings` (what the scene sets).
  *
+ *   - `partialDrawNotice` — why the scene is drawn only in part (`null` = whole); the same text goes once to
+ *     [onDiagnostic] (`RUNTIME`, subject `partialDraw`).
+ *   - Checks (opt-in `TrideKitChecks`): `nodeWorlds()` — the world matrix of every node, light and camera the view
+ *     draws, by node uid and light / camera id; `bonePaletteCheck()` — the core's palettes against gltfio's rule.
+ *
  * Non-obvious constraints:
- *   - The manifest is never parsed here: node baselines come from the glTF node TRS, node ids and carriers
- *     from the runtime (`listNodeMetadata` / `listCarrierMetadata`).
+ *   - The manifest is never parsed here. A view builds the scene from the core's scene record (`RecordScene`):
+ *     one place per node row and per light / camera carrier, the rest pose as a quaternion; the core says each
+ *     node's visibility to the renderer (`/node/{uid}/drawVisible`), and every node with a datablock draws the
+ *     core's mesh: a file mesh as gltfio draws its primitives, in the record's materials (one ubershader
+ *     instance per slug and key), a procedural one in the core's look. A scene the core hands no record of is
+ *     not built: the attach throws `IllegalStateException("scene not built: …")`.
  *   - Lights / cameras hold their pose between changed-only frames (`PoseHold`); one on a carrier node is
  *     posed on the carrier's TRS (the node path meshes use), its component at identity.
- *   - Generators and parametric nodes are listed at attach (`listGenerators`, `listParametricNodes`) and
- *     drawn from the runtime's meshes; a node a deformer bends (`listDeformedNodes`, `/deformed/`)
- *     draws the runtime's bent mesh the parametric way, an imported one with its own renderable off meanwhile; a trunk is pulled again only when its `trunkEpoch` moved. Module
+ *   - Generators (`listGenerators`) and the record's datablock nodes are listed at attach and drawn from the
+ *     runtime's meshes; a node a deformer bends (`listDeformedNodes`, `/deformed/`) draws the runtime's bent
+ *     mesh the same way; a trunk is pulled again only when its `trunkEpoch` moved. Module
  *     instances' rows (`generatorModuleColors`) come with their transforms where the node material samples them.
- *   - The runtime holds the only copy of the archive (`sceneGltfBytes`, `resourceNames`, `assetBytes`) and
- *     hands out only changed values: a new bridge (`attach`) asks for a full frame before its first tick.
+ *   - The runtime holds the only copy of the archive (`assetBytes`) and hands out only changed values: a new
+ *     bridge (`attach`) asks for a full frame before its first tick.
  *   - Node materials load at attach, before any mesh; a package missing or foreign to this engine
  *     (`materialPackageInfo`) leaves the built-in look; the tick that lays an app picture rebinds photo slots.
  *     Only uniforms whose lanes moved go to the bridge (`SentUniforms`); a node-graph input never moves the
  *     look, so a tick writing only those does not pull it.
  *   - The render knobs are laid over the scene's settings by the runtime (`renderSettingsWith`), never here; no
  *     knob = exactly the scene's settings. A change is applied on the same view at once (no reload, the scene
- *     plays on), the live render leaves stay on top, and an on-demand view draws one frame.
+ *     plays on), the live render leaves stay on top, and an on-demand view draws one frame. Cleared over a
+ *     scene without render settings, the view draws as a new one (`restoreInitialRenderSettings`).
  *   - A tick after a move of the bridge's own camera sends it with `setViewport` first (Look at Camera tags turn toward it on that tick).
  *   - Threads: the constructor and the runtime-only calls (`setBinding` / `getBinding` / `trigger` / `setInputs` /
  *     `inputsJson` / `readProperty` / `currentState` / layers / `bindInput` / `availableBindings` / `validateBindings` /
@@ -61,6 +71,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import studio.tride.core.EvalDiagnostic
 import studio.tride.core.TrideCameraDescriptor
+import studio.tride.core.TrideBonePalette
 import studio.tride.core.TrideDatablockMesh
 import studio.tride.core.TrideBoundInput
 import studio.tride.core.TrideDragAxes
@@ -81,11 +92,13 @@ import studio.tride.core.TrideRenderSettings
 import studio.tride.core.TrideParametricNode
 import studio.tride.core.TridePointerPhase
 import studio.tride.core.TrideScene
+import studio.tride.core.TrideSceneRecord
 import studio.tride.core.TrideStateChange
 import studio.tride.core.TrideValue
 import studio.tride.core.eulerToQuat
 import studio.tride.core.materialObjectSeed
 import studio.tride.core.materialPackageInfo
+import studio.tride.kit.record.RecordScene
 import kotlin.math.min
 
 private const val TAG = "tride.kit"
@@ -188,7 +201,7 @@ public data class TrideKitDiagnostic(
     val message: String,
     /**
      * The problem's name where every host shares one: `material.package-missing`, `material.package-stale`,
-     * `material.package-version` (a node material drawn plainly); `null` otherwise.
+     * `material.package-version`, `material.package-refused` (a node material drawn plainly); `null` otherwise.
      */
     val code: String? = null,
 )
@@ -232,6 +245,20 @@ public class TrideKitScene(trdBytes: ByteArray) : AutoCloseable {
          */
         internal fun materialProblemsToTell(problems: List<TrideMaterialGraphProblem>): List<TrideMaterialGraphProblem> =
             problems.distinctBy { it.slug to it.code }
+
+        /** The core's code of a package that did not load on this device. */
+        internal const val PACKAGE_REFUSED: String = "material.package-refused"
+
+        /**
+         * A package the core accepted and this device refused (its version or backend, or `Material.Builder`):
+         * drawn plainly, told as [PACKAGE_REFUSED] in the core's words. The text is the core's
+         * `MaterialPackageProblem::Refused` (`material_graphs.rs`), which no FFI call hands out for a package
+         * the core itself accepted; `MaterialPackageWordsTest` holds the two equal.
+         */
+        internal fun hostRefused(slug: String, family: String): TrideMaterialGraphProblem = TrideMaterialGraphProblem(
+            slug, family, PACKAGE_REFUSED,
+            "This scene's material '$slug' could not be loaded on this device and is drawn plainly. Open the scene in the Tride editor of this version and save it again.",
+        )
 
         private fun loadCore(trdBytes: ByteArray): TrideScene = native { TrideScene.load(trdBytes) }
 
@@ -287,6 +314,18 @@ public class TrideKitScene(trdBytes: ByteArray) : AutoCloseable {
     internal val isClosed: Boolean get() = closed
     public var isPlaying: Boolean = false
         private set
+
+    /**
+     * Why the scene is drawn only in part — a `requires` Android does not draw yet, a material without values the
+     * record does not carry yet, the reasons joined by `; `; `null` = drawn whole. Set when a view builds the scene. The same text went to [onDiagnostic] (`partialDraw`).
+     */
+    public var partialDrawNotice: String? = null
+        private set
+
+    /** The scene as built from the core's record (the table nodes, lights and cameras go through); `null` before a view built it. */
+    private var recordScene: RecordScene? = null
+    /** Each row's visibility to the renderer, as the core said it last. */
+    private val drawVisible = HashMap<Int, Boolean>()
     private var lastFrameNanos = 0L
 
     private var viewportWidth = 0f
@@ -297,15 +336,12 @@ public class TrideKitScene(trdBytes: ByteArray) : AutoCloseable {
     private var sentViewport: Triple<Float, Float, TrideHostCamera?>? = null
 
     // ---- dispatcher state (bound at attach) ----
-    private class Baseline(val position: DoubleArray, val rotation: DoubleArray, val euler: DoubleArray, val scale: DoubleArray)
+    private class Baseline(val position: DoubleArray, val rotation: DoubleArray, val scale: DoubleArray)
     private val nodeIdToIndex = HashMap<String, Int>()
-    private val indexToNodeId = HashMap<Int, String>()
     private val baselines = HashMap<String, Baseline>()
     private val carrierIndexById = HashMap<String, Int>()
     private val lightDescriptors = HashMap<String, TrideLightDescriptor>()
     private val cameraDescriptors = HashMap<String, TrideCameraDescriptor>()
-    private val nodeVisibleOwn = HashMap<Int, Boolean>()
-    private val nodeParentIndex = HashMap<Int, Int>()
     private var environmentBaseEuler = doubleArrayOf(0.0, 0.0, 0.0)
     private var environmentBaseBackground = doubleArrayOf(0.07, 0.07, 0.07)
     /** The host's render knobs (a copy: the record's fields are mutable); `null` = none. */
@@ -332,8 +368,6 @@ public class TrideKitScene(trdBytes: ByteArray) : AutoCloseable {
     private val moduleParts = HashMap<String, List<ModulePart>>()
     /** Parametric nodes of the scene, listed once at attach. */
     private var parametricNodes: List<TrideParametricNode> = emptyList()
-    /** Imported nodes drawn bent now: their own renderable gives way to the bent mesh. */
-    private val bentImported = HashSet<String>()
     /** The `trunkEpoch` each generator's uploaded trunk came from. */
     private val uploadedTrunkEpoch = HashMap<String, Long>()
     private val moduleMaterialParams = HashMap<String, TrideMaterialParams?>()
@@ -347,7 +381,6 @@ public class TrideKitScene(trdBytes: ByteArray) : AutoCloseable {
     private fun cachedAssetBytes(uri: String): ByteArray? = assetBytesCache.getOrPut(uri) { core.assetBytes(uri) }
 
     private val resolver = object : NodeResolver {
-        override fun nodeIdForGltfIndex(gltfIndex: Int): String? = indexToNodeId[gltfIndex]?.takeIf { baselines.containsKey(it) }
         override fun resolveManifestNode(nodeId: String): String? = if (baselines.containsKey(nodeId)) nodeId else null
         override fun gltfIndexForNode(nodeId: String): Int? = if (baselines.containsKey(nodeId)) nodeIdToIndex[nodeId] else null
     }
@@ -356,7 +389,6 @@ public class TrideKitScene(trdBytes: ByteArray) : AutoCloseable {
         override fun position(nodeId: String) = baselines[nodeId]?.position ?: doubleArrayOf(0.0, 0.0, 0.0)
         override fun scale(nodeId: String) = baselines[nodeId]?.scale ?: doubleArrayOf(1.0, 1.0, 1.0)
         override fun rotationQuat(nodeId: String) = baselines[nodeId]?.rotation ?: doubleArrayOf(0.0, 0.0, 0.0, 1.0)
-        override fun eulerBaseline(nodeId: String) = baselines[nodeId]?.euler ?: doubleArrayOf(0.0, 0.0, 0.0)
     })
 
     init {
@@ -849,7 +881,9 @@ public class TrideKitScene(trdBytes: ByteArray) : AutoCloseable {
         val b = bridge
         if (b != null) {
             if (result.tick.mutations.isNotEmpty()) { dispatch(result.tick.mutations, b); b.needsRender = true }
+            applyBonePalettes(result.tick.bonePalettes, b)
         } else {
+            // Without a view the palettes go: `attach` asks the core for its whole frame, every palette again.
             pendingAdvance += result.tick.mutations
         }
         prunePictures()
@@ -896,7 +930,7 @@ public class TrideKitScene(trdBytes: ByteArray) : AutoCloseable {
             scene = bridge.filamentScene,
             materialPackage = materialPackage,
             assetBytes = ::cachedAssetBytes,
-            entityForGltfIndex = bridge::entityForGltfIndex,
+            entityForPlace = bridge::entityForPlace,
             onSceneMutated = { bridge.needsRender = true },
             report = ::reportLoad,
             hostPixels = pictures::get,
@@ -906,12 +940,17 @@ public class TrideKitScene(trdBytes: ByteArray) : AutoCloseable {
                 picturesToPrune += input
                 report(TrideKitDiagnosticKind.LOAD, "image.$input", "image input '$input': $reason — the placeholder shows")
             },
+            ubershaders = bridge.ubershaders,
         )
         // The default camera is the core's framing for the view's aspect — no rule of the bridge's own.
         bridge.framingFor = { aspect -> core.defaultFraming(aspect) }
-        val gltfJson = core.sceneGltfBytes()
-        bridge.loadScene(gltfJson, core.resourceNames(), core::assetBytes)
-        bindNodes(gltfJson)
+        val record = core.sceneRecord() ?: run {
+            // The view rethrows: the scene is not shown, its state, bindings and signals stay usable.
+            val message = "scene not built: the runtime handed no scene record"
+            reportNow(TrideKitDiagnosticKind.LOAD, "scene", message)
+            throw IllegalStateException(message)
+        }
+        loadByRecord(record, bridge)
         materializeLights(bridge)
         materializeCameras(bridge)
         // A new view's carriers show the authored poses; a full frame brings the held ones back.
@@ -937,31 +976,97 @@ public class TrideKitScene(trdBytes: ByteArray) : AutoCloseable {
         Log.i(TAG, "attached: nodes=${nodeIdToIndex.size} lights=${lightDescriptors.size} cameras=${cameraDescriptors.size} carriers=${carrierIndexById.size} activeCamera=${core.activeCamera() ?: "-"}")
     }
 
-    private fun bindNodes(gltfJson: ByteArray) {
-        nodeIdToIndex.clear(); indexToNodeId.clear(); baselines.clear(); carrierIndexById.clear()
-        nodeVisibleOwn.clear(); nodeParentIndex.clear()
-        val gltf = JSONObject(String(gltfJson, Charsets.UTF_8))
-        val nodes = gltf.optJSONArray("nodes") ?: JSONArray()
-        for (entry in core.listNodeMetadata()) {
-            val index = entry.gltfIndex.toInt()
-            nodeIdToIndex[entry.id] = index
-            indexToNodeId[index] = entry.id
-            val node = nodes.optJSONObject(index)
-            val t = node?.optJSONArray("translation")?.let { doubleArrayOf(it.optDouble(0, 0.0), it.optDouble(1, 0.0), it.optDouble(2, 0.0)) } ?: doubleArrayOf(0.0, 0.0, 0.0)
-            val r = node?.optJSONArray("rotation")?.let { doubleArrayOf(it.optDouble(0, 0.0), it.optDouble(1, 0.0), it.optDouble(2, 0.0), it.optDouble(3, 1.0)) } ?: doubleArrayOf(0.0, 0.0, 0.0, 1.0)
-            val s = node?.optJSONArray("scale")?.let { doubleArrayOf(it.optDouble(0, 1.0), it.optDouble(1, 1.0), it.optDouble(2, 1.0)) } ?: doubleArrayOf(1.0, 1.0, 1.0)
-            baselines[entry.id] = Baseline(t, r, CoreRotation.eulerXYZOf(r), s)
-            nodeVisibleOwn[index] = entry.visible
+    /**
+     * The scene built from the core's [record] — one place per node row and per light / camera carrier
+     * ([RecordScene]); a row's number is its node index. The core says each node's visibility to the renderer.
+     * A `requires` Android does not draw is said once (`partialDraw`).
+     */
+    private fun loadByRecord(record: TrideSceneRecord, bridge: FilamentSceneBridge) {
+        val built = RecordScene(record)
+        lastBonePalettes.clear()
+        partialDrawNotice = null
+        bridge.loadPlaces(built.places)
+        nodeIdToIndex.clear(); baselines.clear(); carrierIndexById.clear(); drawVisible.clear()
+        for ((row, uid) in built.uidAt.withIndex()) {
+            nodeIdToIndex[uid] = row
+            val place = built.places[row]
+            baselines[uid] = Baseline(place.translation, place.rotation, place.scale)
+            drawVisible[row] = built.visibleAt[row]
         }
-        for (entry in core.listNodeMetadata()) {
-            val parent = entry.parentId ?: continue
-            nodeIdToIndex[parent]?.let { nodeParentIndex[entry.gltfIndex.toInt()] = it }
+        for ((id, place) in built.carrierPlace) {
+            carrierIndexById[id] = place
+            nodeIdToIndex[id] = place
         }
-        for (entry in core.listCarrierMetadata()) {
-            carrierIndexById[entry.id] = entry.gltfIndex.toInt()
-            nodeIdToIndex[entry.id] = entry.gltfIndex.toInt()
+        recordScene = built
+        for (notice in built.notices) reportLoad("record", notice)
+        RecordScene.requiresNotice(record.requires)?.let(::notePartialDraw)
+        try {
+            core.setDrawVisibility(true)
+        } catch (e: Exception) {
+            reportLoad("drawVisibility", "the runtime does not say what is drawn: ${e.message}")
         }
     }
+
+    /**
+     * The world matrix (16 numbers, column-major) of every node, light and camera the attached view draws, as its
+     * TransformManager composes it, by node uid and light / camera id; one the view has no entity for is left out.
+     * Empty without a view. For checks: the drawn worlds against the core's node table (the parity gate).
+     */
+    @TrideKitChecks
+    public fun nodeWorlds(): Map<String, FloatArray> {
+        checkOpenOnMain()
+        val b = bridge ?: return emptyMap()
+        val out = java.util.TreeMap<String, FloatArray>()
+        for ((id, index) in nodeIdToIndex) b.worldTransform(index)?.let { out[id] = it }
+        return out
+    }
+
+    /** The last bone palette the core handed per mesh row and part (`BonePaletteCheck.key`). */
+    private val lastBonePalettes = HashMap<Long, TrideBonePalette>()
+
+    /**
+     * The core's bone palettes of a tick: each on the skin renderable of its mesh's row and part, the part's
+     * box beside — the generators keep it for a renderable built later.
+     */
+    private fun applyBonePalettes(palettes: List<TrideBonePalette>, bridge: FilamentSceneBridge) {
+        if (recordScene == null || palettes.isEmpty()) return
+        val gen = bridge.generators ?: return
+        for (p in palettes) {
+            lastBonePalettes[BonePaletteCheck.key(p.mesh.toInt(), p.part.toInt())] = p
+            val bounds = p.bounds?.takeIf { it.min.size == 3 && it.max.size == 3 }?.let { (it.min + it.max).toFloatArray() }
+            gen.setBonePalette(p.mesh.toInt(), p.part.toInt(), p.bones, bounds)
+        }
+        bridge.needsRender = true
+    }
+
+    /**
+     * The palette check (the parity gate): every palette the core handed last against the one gltfio's
+     * `updateBoneMatrices` makes of the worlds the attached view's TransformManager composed ([BonePaletteCheck]);
+     * `null` without a view.
+     */
+    @TrideKitChecks
+    public fun bonePaletteCheck(): BonePaletteCheck.Result? {
+        checkOpenOnMain()
+        val b = bridge ?: return null
+        val built = recordScene ?: return null
+        // A skin cut into parts: each part's palette names its own joints (the decoder's cut).
+        val partJoints = HashMap<Long, List<Int>>()
+        for (node in built.datablockNodes) {
+            if (built.skinOf[node.nodeUid] == null) continue
+            val row = built.rowOf[node.nodeUid] ?: continue
+            val mesh = core.datablockMesh(node.datablockUid) ?: continue
+            for (part in mesh.skinParts + mesh.parts.flatMap { it.skinParts }) {
+                partJoints[BonePaletteCheck.key(row, part.part.toInt())] = part.joints.map { it.toInt() }
+            }
+        }
+        return BonePaletteCheck.measure(lastBonePalettes.values, built.skins, partJoints) { b.worldTransform(it) }
+    }
+
+    /** The scene's light ids, as listed at the last attach (checks). */
+    internal fun lightIds(): Set<String> = lightDescriptors.keys.toSet()
+
+    /** The place the view drew light / camera [id]'s carrier at (checks). */
+    internal fun carrierIndex(id: String): Int? = carrierIndexById[id]
 
     private fun lightForwardDirection(euler: List<Double>?): DoubleArray {
         val forward = doubleArrayOf(0.0, 0.0, -1.0)
@@ -979,7 +1084,7 @@ public class TrideKitScene(trdBytes: ByteArray) : AutoCloseable {
                 color = doubleArrayOf(l.color.getOrElse(0) { 1.0 }, l.color.getOrElse(1) { 1.0 }, l.color.getOrElse(2) { 1.0 }),
                 intensity = l.intensity, range = l.range, innerConeAngle = l.innerConeAngle, outerConeAngle = l.outerConeAngle,
                 castShadows = l.castShadows, position = l.position?.toDoubleArray(), direction = lightForwardDirection(l.rotation),
-                gltfIndex = l.gltfIndex?.toInt(), carrierGltfIndex = carrierIndexById[l.id],
+                carrierPlace = carrierIndexById[l.id],
             )
         })
     }
@@ -992,7 +1097,7 @@ public class TrideKitScene(trdBytes: ByteArray) : AutoCloseable {
             CameraSpec(
                 id = c.id, perspective = c.kind != "orthographic", yfov = c.yfov, xmag = c.xmag, ymag = c.ymag,
                 znear = c.znear, zfar = c.zfar, focusDistance = c.focusDistance, aperture = c.aperture,
-                carrierGltfIndex = carrierIndexById[c.id], focusTargetGltfIndex = c.focusTarget?.let { nodeIdToIndex[it] },
+                carrierPlace = carrierIndexById[c.id], focusTargetPlace = c.focusTarget?.let { nodeIdToIndex[it] },
             )
         })
     }
@@ -1004,36 +1109,42 @@ public class TrideKitScene(trdBytes: ByteArray) : AutoCloseable {
     /**
      * Load every node material's packages — checked against this engine's
      * Filament and backend first (a foreign package aborts in `Material.Builder`) — with their current
-     * uniforms, then dress the asset's slots that wear them. A missing or refused package leaves the
-     * slug on the built-in path; the core's problems (stale / version records, a package the archive does
-     * not hold — `material.package-missing`) are told once per material and code ([materialProblemsToTell]).
+     * uniforms; the meshes built after them wear them. Without a loaded package a file mesh draws the
+     * record's glTF form (written by the core), generated meshes and batches the built-in look. The core's problems (stale / version records, a package the archive does not hold or the
+     * core refused) and the packages this device refused ([hostRefused]) are told once per material and
+     * code ([materialProblemsToTell]).
      */
     private fun materializeMaterialGraphs(bridge: FilamentSceneBridge, assets: AssetManager?) {
         materialGraphFamilies.clear()
         sentUniforms.clear()
-        for (p in materialProblemsToTell(core.materialGraphProblems())) reportLoad(p.slug, p.message, p.code)
-        val gen = bridge.generators ?: return
+        val refused = loadMaterialGraphs(bridge, assets)
+        for (p in materialProblemsToTell(core.materialGraphProblems() + refused)) reportLoad(p.slug, p.message, p.code)
+    }
+
+    /** Loads the packages this device takes; returns the ones the core accepted and this device refused ([hostRefused]). */
+    private fun loadMaterialGraphs(bridge: FilamentSceneBridge, assets: AssetManager?): List<TrideMaterialGraphProblem> {
+        val gen = bridge.generators ?: return emptyList()
         val slugs = core.materialGraphSlugs()
-        if (slugs.isEmpty()) return
+        if (slugs.isEmpty()) return emptyList()
+        val refused = ArrayList<TrideMaterialGraphProblem>()
         // The engine's own version is the version of its built-in package.
         val engineVersion = assets?.let { readAsset(it, "tride/materials/tride-generated.filamat") }?.let { materialPackageInfo(it) }?.version
         val backend = if (bridge.engine.backend == Engine.Backend.VULKAN) "vulkan" else "opengl"
         for (slug in slugs) for (family in listOf("mesh", "generated", "instanced")) {
             val graph = core.materialGraph(slug, family) ?: continue
-            // A package the archive does not hold is the core's problem, told above.
+            // A package the archive does not hold, or one the core refused, is the core's problem.
             val bytes = core.assetBytes(graph.packageUri) ?: continue
             val info = materialPackageInfo(bytes)
             if (info == null || info.version != engineVersion || backend !in info.backends) {
-                reportLoad(slug, "node material '$slug' ($family): package for another Filament or without $backend — built-in look"); continue
+                Log.w(TAG, "node material '$slug' ($family): package version ${info?.version} for engine $engineVersion, backends ${info?.backends} without $backend")
+                refused += hostRefused(slug, family); continue
             }
-            if (!gen.registerMaterialGraph(slug, family, bytes, graph)) continue
+            if (!gen.registerMaterialGraph(slug, family, bytes, graph)) { refused += hostRefused(slug, family); continue }
             materialGraphFamilies.getOrPut(slug) { ArrayList() } += family
             pushMaterialGraphValues(slug, family, gen)
         }
-        val seeds = HashMap<Int, Float>()
-        for ((uid, index) in nodeIdToIndex) seeds[index] = materialObjectSeed(uid).toFloat()
-        val dressed = gen.dressAssetWithMaterialGraphs(seeds)
-        Log.i(TAG, "node materials: ${materialGraphFamilies.size} of ${slugs.size} loaded, $dressed asset slot(s) dressed")
+        Log.i(TAG, "node materials: ${materialGraphFamilies.size} of ${slugs.size} loaded")
+        return refused
     }
 
     /** The runtime's uniforms of `slug` on `family` at the scene's current values that moved since the last push, to every instance. */
@@ -1066,10 +1177,15 @@ public class TrideKitScene(trdBytes: ByteArray) : AutoCloseable {
      */
     private fun materializeParametricNodes(bridge: FilamentSceneBridge) {
         val gen = bridge.generators ?: return
-        parametricNodes = core.listParametricNodes()
-        bentImported.clear()
+        val built = recordScene ?: return
+        // Every node with a datablock is drawn this way, an imported mesh included; a file mesh wears the
+        // record's materials, handed over before the meshes.
+        gen.setStandardMaterials(built.materials.mapNotNull { m -> m.standard?.let { m.slug to it } }.toMap())
+        parametricNodes = built.datablockNodes
         for (n in parametricNodes) uploadParametricNode(n, gen)
         if (parametricNodes.isNotEmpty()) Log.i(TAG, "materialized ${parametricNodes.size} parametric node(s)")
+        // A key asking for what the record does not carry (or a picture this build cannot decode): drawn in part.
+        RecordScene.gapsNotice(gen.standardMaterialGaps())?.let(::notePartialDraw)
         // The nodes the runtime bent at load (a parametric one drew bent above).
         val bent = core.listDeformedNodes()
         for (uid in bent) refreshDeformed(uid, bridge)
@@ -1077,26 +1193,15 @@ public class TrideKitScene(trdBytes: ByteArray) : AutoCloseable {
     }
 
     /**
-     * Node `uid` was bent anew, or left every deformer's reach. A parametric node draws its bent mesh,
-     * else its recipe's; an imported one draws the bent mesh under it with its own renderable off, and takes its
-     * renderable back when nothing bends it.
+     * Node `uid` was bent anew, or left every deformer's reach: its datablock's node draws its bent mesh, else its
+     * recipe's. Every mesh of the scene record is a datablock's, so a bent node without one draws nothing.
      */
     private fun refreshDeformed(uid: String, bridge: FilamentSceneBridge) {
         val gen = bridge.generators ?: return
-        parametricNodes.firstOrNull { it.nodeUid == uid }?.let { uploadParametricNode(it, gen); return }
-        val parent = nodeIdToIndex[uid] ?: run {
-            warnOnce(TrideKitDiagnosticKind.LOAD, uid, "bent node $uid has no glTF node — not drawn"); return
+        val node = parametricNodes.firstOrNull { it.nodeUid == uid } ?: run {
+            warnOnce(TrideKitDiagnosticKind.LOAD, uid, "bent node $uid draws no datablock of the scene record — not drawn"); return
         }
-        val id = "parametric:$uid"
-        val mesh = core.deformedMesh(uid)
-        if (mesh == null) {
-            if (!bentImported.remove(uid)) return
-            gen.removeGeneratedMesh(id)
-            bridge.setNodeMeshReplaced(parent, false)
-            return
-        }
-        if (!upload(mesh, id, parent, uid, gen)) { reportLoad(id, "bent mesh '$id' could not be drawn"); return }
-        if (bentImported.add(uid)) bridge.setNodeMeshReplaced(parent, true)
+        uploadParametricNode(node, gen)
     }
 
     /**
@@ -1161,7 +1266,7 @@ public class TrideKitScene(trdBytes: ByteArray) : AutoCloseable {
 
     private fun uploadParametricNode(n: TrideParametricNode, gen: FilamentGenerators) {
         val parent = nodeIdToIndex[n.nodeUid] ?: run {
-            warnOnce(TrideKitDiagnosticKind.LOAD, "${n.nodeUid}", "parametric node ${n.nodeUid} has no glTF node — not drawn"); return
+            warnOnce(TrideKitDiagnosticKind.LOAD, "${n.nodeUid}", "parametric node ${n.nodeUid} is no place of the scene — not drawn"); return
         }
         // A node a deformer reaches draws its bent mesh, else its recipe's.
         val mesh = core.deformedMesh(n.nodeUid) ?: core.datablockMesh(n.datablockUid) ?: run {
@@ -1173,12 +1278,33 @@ public class TrideKitScene(trdBytes: ByteArray) : AutoCloseable {
         }
     }
 
-    /** One runtime mesh drawn as generated mesh `id` under glTF node `parent`, in the mesh's look. */
+    /**
+     * One runtime mesh drawn as generated mesh `id` under node `parent`, in the mesh's look — or, a file mesh
+     * ([isFileMesh]), as gltfio draws its primitives.
+     */
     private fun upload(mesh: TrideDatablockMesh, id: String, parent: Int, objectUid: String, gen: FilamentGenerators): Boolean {
         // A multi-material import keeps a draw group per primitive, each in its look.
         val geometry = TrideGeneratedGeometry(id, 0uL, "triangles", mesh.positions, mesh.normals, mesh.uvs, ByteArray(0), mesh.colors, mesh.indices, mesh.groups, mesh.tangents)
-        val host = GeneratorHost(parent, mesh.material, mesh.materialParams, null, objectUid, materialObjectSeed(objectUid).toFloat())
+        val fileMesh = if (isFileMesh(mesh)) mesh else null
+        // A mesh with targets starts at the weights the stream last set for its row, else the node's at rest.
+        val weights = if (fileMesh != null && fileMesh.morphTargets.isNotEmpty()) {
+            morphWeights.held(parent) ?: recordScene?.restWeights?.get(objectUid)?.let { w -> FloatArray(w.size) { w[it].toFloat() } }
+        } else null
+        // A node with a skin: its joints (at most Filament's 256) bend the mesh as a whole skin; a skin cut into parts
+        // names its own (`skinParts`). The palettes come per tick.
+        val skinBones = if (fileMesh != null) recordScene?.let { r -> r.skinOf[objectUid]?.let { min(r.skins[it].joints.size, 256) } } ?: 0 else 0
+        val host = GeneratorHost(parent, mesh.material, mesh.materialParams, null, objectUid, materialObjectSeed(objectUid).toFloat(), fileMesh, weights, skinBones)
         return gen.upsertGeneratedMesh(id, geometry, host)
+    }
+
+    /**
+     * A file mesh names what its primitives carry in the file — on the mesh without groups, else on every group, and
+     * on every part; a mesh of parts alone, on its parts. A mesh the core built names nothing.
+     */
+    private fun isFileMesh(mesh: TrideDatablockMesh): Boolean {
+        if (!mesh.parts.all { it.attributes != null }) return false
+        if (mesh.positions.isEmpty() && mesh.attributes == null) return mesh.parts.isNotEmpty()
+        return mesh.attributes != null && mesh.groups.all { it.attributes != null }
     }
 
     private fun hostFor(id: String): GeneratorHost {
@@ -1239,7 +1365,7 @@ public class TrideKitScene(trdBytes: ByteArray) : AutoCloseable {
     }
 
     /**
-     * A palette look was written — pull it as the scene draws it now and recolour every instance.
+     * A palette look was written — pull it as the scene draws it now and recolour every built-in instance.
      * [lookWritten] = the tick wrote a leaf other than a node-graph input ([isGraphLeaf]): without it the look
      * cannot have moved and is not pulled, unless the slug was never recoloured yet.
      */
@@ -1275,27 +1401,28 @@ public class TrideKitScene(trdBytes: ByteArray) : AutoCloseable {
         }
     }
 
-    private val visibility = NodeVisibility(nodeVisibleOwn, nodeParentIndex)
-
-    /** Every node's effective visibility, parents first (the bridge applies a flag to the subtree). */
+    /** Every node's visibility: each row the core's value (the bridge stops at the rows under it). */
     private fun applyNodeVisibility(bridge: FilamentSceneBridge) {
-        for (index in visibility.parentsFirst()) {
-            if (!bridge.hasNode(index)) continue
-            bridge.setNodeVisible(index, visibility.effective(index))
-        }
+        for ((row, visible) in drawVisible) bridge.setNodeVisible(row, visible)
     }
 
     /**
      * The scene's render settings with the host's knobs, as the runtime lays them. [fresh] = a new view: it
      * starts from the authored leaves (a full frame brings the live ones back); otherwise the same view takes
-     * the settings again and keeps what the frames wrote over them.
+     * the settings again and keeps what the frames wrote over them. `null` (a scene without settings, no knob):
+     * the view draws as a new view does — one that took knobbed settings goes back to the options it was made
+     * with (`restoreInitialRenderSettings`); the schema's defaults are not what a new view draws.
      */
     private fun applyRenderSettings(bridge: FilamentSceneBridge, fresh: Boolean) {
         val settings = core.renderSettingsWith(knobs ?: TrideRenderOverrides())
         if (fresh) {
             liveRender = LiveRenderLeaves(settings?.fog?.let { doubleArrayOf(it.colorR.toDouble(), it.colorG.toDouble(), it.colorB.toDouble()) } ?: doubleArrayOf(0.0, 0.0, 0.0))
         }
-        if (settings == null) { Log.i(TAG, "renderSettings: not authored — Filament defaults"); return }
+        if (settings == null) {
+            if (bridge.renderSettingsShown != null) bridge.restoreInitialRenderSettings()
+            Log.i(TAG, "renderSettings: not authored — Filament defaults")
+            return
+        }
         bridge.applyRenderSettings(settings)
     }
 
@@ -1344,6 +1471,8 @@ public class TrideKitScene(trdBytes: ByteArray) : AutoCloseable {
             dispatch(result.mutations, b, complete)
             b.needsRender = true
         }
+        // The skins' palettes this tick moved, after the poses they were made from.
+        if (b != null) applyBonePalettes(result.bonePalettes, b)
         prunePictures()
         deliverSignals()
     }
@@ -1406,7 +1535,7 @@ public class TrideKitScene(trdBytes: ByteArray) : AutoCloseable {
                 bridge.setLightPosition(id, pose.position)
                 bridge.setLightDirection(id, lightForwardDirection(pose.euler.toList()))
             }
-            else -> warnOnce(TrideKitDiagnosticKind.POINTER, id, "camera '$id' has no baked carrier — its pose cannot move")
+            else -> warnOnce(TrideKitDiagnosticKind.POINTER, id, "camera '$id' has no carrier place in the scene record — its pose cannot move")
         }
     }
 
@@ -1434,25 +1563,24 @@ public class TrideKitScene(trdBytes: ByteArray) : AutoCloseable {
                 is Dispatch.Fail -> warnOnce(TrideKitDiagnosticKind.POINTER, "${m.pointer}", "${m.pointer}: ${d.message}")
             }
         }
-        var visibilityChanged = false
         for (id in accumulator.dirty) {
             val ov = accumulator.overrides[id] ?: continue
             val base = baselines[id] ?: continue
             val index = nodeIdToIndex[id] ?: continue
             bridge.setNodeTRS(index, ov.position ?: base.position, resolveLeafRotation(ov, base.rotation, CoreRotation::quatOfEulerXYZ), ov.scale ?: base.scale)
-            // Only a CHANGE of the node's own flag re-applies visibility: re-applying a stale override on
-            // a transform-only tick would, through the bridge's whole-subtree flag, un-hide a child that
-            // is hidden on its own.
-            ov.visible?.let { visible ->
-                if (nodeVisibleOwn[index] != visible) {
-                    nodeVisibleOwn[index] = visible
-                    visibilityChanged = true
-                }
-            }
+            // The node's own flag is not drawn: the core says each row's visibility (`drawVisible`, below).
         }
         accumulator.dirty.clear()
-        // Parents first, each node from its own flag and its ancestors'.
-        if (visibilityChanged) applyNodeVisibility(bridge)
+        for (w in routed.drawVisible) {
+            val row = nodeIdToIndex[w.uid]
+            if (row == null) {
+                warnOnce(TrideKitDiagnosticKind.POINTER, "/node/${w.uid}/drawVisible", "/node/${w.uid}/drawVisible: no node of the scene")
+                continue
+            }
+            if (drawVisible[row] == w.visible) continue
+            drawVisible[row] = w.visible
+            bridge.setNodeVisible(row, w.visible)
+        }
         for ((gltfIndex, lanes) in accumulator.morphWeights) {
             val count = bridge.morphTargetCount(gltfIndex)
             if (count <= 0) { warnOnce(TrideKitDiagnosticKind.POINTER, "$gltfIndex", "node $gltfIndex has no morph targets — its weights are ignored"); continue }
@@ -1567,9 +1695,28 @@ public class TrideKitScene(trdBytes: ByteArray) : AutoCloseable {
         val dirtyDeformed = LinkedHashSet(routed.deformedGeometry)
         for (uid in dirtyDeformed) refreshDeformed(uid, bridge)
         for (slug in dirtyPalettes) recolourPalette(slug, slug in writtenLooks, bridge)
+        // The core's resolved glTF parameters, the scene meshes' instances, in batch order: a changed key makes
+        // the slug's instances again (with every parameter taken so far), the parameters after it land on them.
+        for (g in routed.gltfParams) when (g) {
+            is GltfParamWrite -> if ((bridge.generators?.setGltfParameter(g.slug, g.name, g.values) ?: 0) == 0) {
+                warnOnce(TrideKitDiagnosticKind.POINTER, "/materialOverrides/${g.slug}/gltf/${g.name}",
+                    "material '${g.slug}': no glTF instance of it declares '${g.name}' — not drawn")
+            }
+            // A material that does not declare it draws as glTF says (`setInstanceState`): nothing to tell.
+            is InstanceStateWrite -> bridge.generators?.setInstanceState(g.slug, g.name, g.value)
+            is MaterialKeyWrite -> if (bridge.generators?.rekeyStandard(g.slug, g.key) == null) {
+                warnOnce(TrideKitDiagnosticKind.POINTER, "/materialOverrides/${g.slug}/gltf/materialKey",
+                    "material '${g.slug}': its key changed, but no scene mesh here draws it in its glTF form")
+            }
+        }
+        // A glass write, once the meshes of the tick are made: a problem only where the built-in look draws it.
+        bridge.generators?.let { gen ->
+            for (p in glassProblems(routed.glass, gen::wearsBuiltInLook)) warnOnce(TrideKitDiagnosticKind.POINTER, p.pointer, "${p.pointer}: ${p.message} [${p.code}]")
+        }
         refreshPhotoSlots(if (complete) null else dirtyPalettes, bridge)
         // A mesh re-uploaded under a hidden host must stay hidden.
-        if ((dirtyGenerators.isNotEmpty() || dirtyDatablocks.isNotEmpty() || dirtyDeformed.isNotEmpty()) && nodeVisibleOwn.values.any { !it }) applyNodeVisibility(bridge)
+        val anyHidden = drawVisible.values.any { !it }
+        if ((dirtyGenerators.isNotEmpty() || dirtyDatablocks.isNotEmpty() || dirtyDeformed.isNotEmpty()) && anyHidden) applyNodeVisibility(bridge)
         accumulator.clearBuckets()
     }
 
@@ -1596,6 +1743,12 @@ public class TrideKitScene(trdBytes: ByteArray) : AutoCloseable {
     /** Steps the scene ran (instrumentation: the render-rate tests count the loop's wakes). */
     internal var tickCount: Long = 0L
         private set
+
+    /** What the scene draws only in part: added to [partialDrawNotice] (each reason once per build) and said once to [onDiagnostic]. */
+    private fun notePartialDraw(notice: String) {
+        partialDrawNotice = partialDrawNotice?.let { "$it; $notice" } ?: notice
+        report(TrideKitDiagnosticKind.RUNTIME, "partialDraw", notice)
+    }
 
     /** A problem of the showing view (a refused render rate): [onDiagnostic] hears it once, at once. */
     internal fun reportFromView(subject: String, message: String) =

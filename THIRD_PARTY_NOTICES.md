@@ -30,7 +30,7 @@ below that apply to each component; a text shared by many components is printed 
 | earcutr | 0.5.0 | ISC | https://github.com/frewsxcv/earcutr/ | T19 |
 | either | 1.19.0 | MIT OR Apache-2.0 | https://github.com/rayon-rs/either | T1, T20 |
 | equivalent | 1.0.2 | Apache-2.0 OR MIT | https://github.com/indexmap-rs/equivalent | T1, T21 |
-| Filament | 1.77.1 | Apache-2.0 | https://github.com/google/filament/tree/v1.77.1 | T1, T22 |
+| Filament | 1.77.1 (built from source with Tride's changes) | Apache-2.0 | https://github.com/google/filament/tree/v1.77.1 | T1, T22 |
 | flate2 | 1.1.9 | MIT OR Apache-2.0 | https://github.com/rust-lang/flate2-rs | T1, T23 |
 | foldhash | 0.2.0 | Zlib | https://github.com/orlp/foldhash | T24 |
 | font-types | 0.12.7 | MIT OR Apache-2.0 | https://github.com/googlefonts/fontations | T25, T26 |
@@ -92,7 +92,7 @@ below that apply to each component; a text shared by many components is printed 
 
 ### T1. Apache License 2.0
 
-Applies to: AndroidX Annotation 1.9.1, anyhow 1.0.104, base64 0.13.1, basisu (in Filament) Filament 1.77.1, bevy_mikktspace 1.0.0, bitflags 2.11.1, bumpalo 3.20.2, bytemuck 1.25.0, camino 1.2.2, cargo-platform 0.1.9, cfg-if 1.0.4, crc32fast 1.5.0, draco (in Filament) Filament 1.77.1, either 1.19.0, equivalent 1.0.2, Filament 1.77.1, flate2 1.1.9, getrandom 0.4.2, gltf 1.4.1, gltf-json 1.4.1, Gradle Wrapper (in the TridePlayer example) 8.14.3, hashbrown 0.17.0, i_overlay 9.1.0, indexmap 2.14.0, itertools 0.14.0, itoa 1.0.18, Jetpack Compose (ui, foundation, runtime) BOM 2025.06.01, JNA 5.17.0, Kotlin standard library 2.4.0, lazy_static 1.5.0, libc 0.2.189, libm 0.2.16, log 0.4.29, num-traits 0.2.19, once_cell 1.21.4, semver 1.0.28, serde 1.0.228, serde_core 1.0.228, serde_json 1.0.149, smallvec 1.15.1, stable_deref_trait 1.2.1, static_assertions 1.1.0, thiserror 1.0.69, thiserror 2.0.18, typed-path 0.12.3, unicode-bidi 0.3.18, uuid 1.23.1, zopfli 0.8.3.
+Applies to: AndroidX Annotation 1.9.1, anyhow 1.0.104, base64 0.13.1, basisu (in Filament) Filament 1.77.1, bevy_mikktspace 1.0.0, bitflags 2.11.1, bumpalo 3.20.2, bytemuck 1.25.0, camino 1.2.2, cargo-platform 0.1.9, cfg-if 1.0.4, crc32fast 1.5.0, draco (in Filament) Filament 1.77.1, either 1.19.0, equivalent 1.0.2, Filament 1.77.1 (built from source with Tride's changes), flate2 1.1.9, getrandom 0.4.2, gltf 1.4.1, gltf-json 1.4.1, Gradle Wrapper (in the TridePlayer example) 8.14.3, hashbrown 0.17.0, i_overlay 9.1.0, indexmap 2.14.0, itertools 0.14.0, itoa 1.0.18, Jetpack Compose (ui, foundation, runtime) BOM 2025.06.01, JNA 5.17.0, Kotlin standard library 2.4.0, lazy_static 1.5.0, libc 0.2.189, libm 0.2.16, log 0.4.29, num-traits 0.2.19, once_cell 1.21.4, semver 1.0.28, serde 1.0.228, serde_core 1.0.228, serde_json 1.0.149, smallvec 1.15.1, stable_deref_trait 1.2.1, static_assertions 1.1.0, thiserror 1.0.69, thiserror 2.0.18, typed-path 0.12.3, unicode-bidi 0.3.18, uuid 1.23.1, zopfli 0.8.3.
 
 ````text
 Apache License
@@ -812,7 +812,7 @@ DEALINGS IN THE SOFTWARE.
 
 ### T22. LICENSE (beside the Apache License 2.0)
 
-Applies to: Filament 1.77.1.
+Applies to: Filament 1.77.1 (built from source with Tride's changes).
 
 ````text
 Copyright 2023 The Android Open Source Project

@@ -354,6 +354,7 @@ These throw:
 | any after `close()` (except `pause` / `close`) | `IllegalStateException` | the scene is closed |
 | a main-thread call (see "Threads") from another thread | `IllegalStateException` | the message names the thread |
 | `view.scene = scene` | `IllegalStateException` | the scene is closed or the view is disposed; the scene shown stays |
+| | `IllegalStateException` | `scene not built: …` — the runtime could not describe the scene to draw; nothing is shown, the scene itself stays usable |
 
 `TrideException.Internal` is an internal runtime failure; it does not occur in normal work.
 
@@ -366,6 +367,7 @@ a line in logcat, tags `tride.kit`, `tride.eval`), each one once, while the scen
 | `LOAD` | an environment, material package, mesh or texture that could not be loaded — the built-in look is used instead | the asset |
 | `POINTER` | a change the scene made that this TrideKit cannot show (a light, camera, morph target or material it does not support) | its address |
 | `RUNTIME` | a step, touch or view-size call that failed | the call |
+| `RUNTIME` | the scene is drawn only in part (a kind of content or a material value this TrideKit does not draw yet); the same text is in `scene.partialDrawNotice` | `partialDraw` |
 
 `readProperty` answers `null` and `pick` an empty list when there is nothing to report. TrideKit's debug
 lines are off by default; turn them on with `adb shell setprop log.tag.tride.kit DEBUG`.

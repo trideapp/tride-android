@@ -1,9 +1,9 @@
 /**
- * The bridge's 3D math (internal): quaternion rotation of a vector, column-major TRS matrices for Filament's
- * TransformManager. Euler ↔ quaternion is the core's (`CoreRotation`), never composed here.
+ * The bridge's 3D math (internal): quaternion rotation of a vector, the decomposition of Filament's column-major
+ * matrices. Euler ↔ quaternion is the core's (`CoreRotation`), a local matrix gltfio's (`LocalMatrix`), never
+ * composed here.
  *
- * Contents: `rotateByQuat`, `normalize3`, `composeTRS` / `decomposeTRS`, `eulerXYZToMat3` (IBL rotation),
- * `isEmptyBox`.
+ * Contents: `rotateByQuat`, `normalize3`, `decomposeTRS`, `eulerXYZToMat3` (IBL rotation), `isEmptyBox`.
  *
  * Non-obvious constraints:
  *   - Quaternions are `[x, y, z, w]` everywhere; Filament's `float[16]` is column-major, and so is the
@@ -36,36 +36,10 @@ internal object TrideMath {
         return doubleArrayOf(v[0] / len, v[1] / len, v[2] / len)
     }
 
-    /** `T · R · S` as a column-major `float[16]` (glTF §3.7 apply order). */
-    fun composeTRS(t: DoubleArray, r: DoubleArray, s: DoubleArray): FloatArray {
-        val qx = r[0]; val qy = r[1]; val qz = r[2]; val qw = r[3]
-        val xx = qx * qx; val yy = qy * qy; val zz = qz * qz
-        val xy = qx * qy; val xz = qx * qz; val yz = qy * qz
-        val wx = qw * qx; val wy = qw * qy; val wz = qw * qz
-        val m = FloatArray(16)
-        m[0] = ((1 - 2 * (yy + zz)) * s[0]).toFloat()
-        m[1] = (2 * (xy + wz) * s[0]).toFloat()
-        m[2] = (2 * (xz - wy) * s[0]).toFloat()
-        m[3] = 0f
-        m[4] = (2 * (xy - wz) * s[1]).toFloat()
-        m[5] = ((1 - 2 * (xx + zz)) * s[1]).toFloat()
-        m[6] = (2 * (yz + wx) * s[1]).toFloat()
-        m[7] = 0f
-        m[8] = (2 * (xz + wy) * s[2]).toFloat()
-        m[9] = (2 * (yz - wx) * s[2]).toFloat()
-        m[10] = ((1 - 2 * (xx + yy)) * s[2]).toFloat()
-        m[11] = 0f
-        m[12] = t[0].toFloat()
-        m[13] = t[1].toFloat()
-        m[14] = t[2].toFloat()
-        m[15] = 1f
-        return m
-    }
-
     /** Column-major 3×3 rotation of an XYZ Euler triple (for `IndirectLight.setRotation`). */
     fun eulerXYZToMat3(e: DoubleArray): FloatArray {
         val q = CoreRotation.quatOfEulerXYZ(e)
-        val m = composeTRS(doubleArrayOf(0.0, 0.0, 0.0), q, doubleArrayOf(1.0, 1.0, 1.0))
+        val m = LocalMatrix.of(doubleArrayOf(0.0, 0.0, 0.0), q, doubleArrayOf(1.0, 1.0, 1.0))
         return floatArrayOf(m[0], m[1], m[2], m[4], m[5], m[6], m[8], m[9], m[10])
     }
 
