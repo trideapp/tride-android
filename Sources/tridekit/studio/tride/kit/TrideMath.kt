@@ -3,7 +3,8 @@
  * matrices. Euler ↔ quaternion is the core's (`CoreRotation`), a local matrix gltfio's (`LocalMatrix`), never
  * composed here.
  *
- * Contents: `rotateByQuat`, `normalize3`, `decomposeTRS`, `eulerXYZToMat3` (IBL rotation), `isEmptyBox`.
+ * Contents: `rotateByQuat`, `normalize3`, `decomposeTRS`, `rigid` (a world with its scaling ignored), `eulerXYZToMat3`
+ * (IBL rotation), `isEmptyBox`.
  *
  * Non-obvious constraints:
  *   - Quaternions are `[x, y, z, w]` everywhere; Filament's `float[16]` is column-major, and so is the
@@ -81,6 +82,38 @@ internal object TrideMath {
             q[2] = 0.25 * sq
         }
         return Triple(t, q, s)
+    }
+
+    /**
+     * Column-major world [m] with its scaling ignored (glTF 2.0 §3.10.2, a camera's view): the same origin, the view
+     * axis along the node's -Z (its third column), up as near the node's +Y as a right angle to it allows, unit
+     * length — a rigid matrix, as Filament wants a camera's. A matrix already rigid (within 1e-6) comes back as it
+     * is; `null` for one whose axes are degenerate (a zero scale).
+     */
+    fun rigid(m: FloatArray): FloatArray? {
+        val c0 = DoubleArray(3) { m[it].toDouble() }
+        val c1 = DoubleArray(3) { m[4 + it].toDouble() }
+        val c2 = DoubleArray(3) { m[8 + it].toDouble() }
+        fun dot(a: DoubleArray, b: DoubleArray) = a[0] * b[0] + a[1] * b[1] + a[2] * b[2]
+        fun cross(a: DoubleArray, b: DoubleArray) = doubleArrayOf(a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0])
+        val tol = 1e-6
+        val unit = listOf(c0, c1, c2).all { kotlin.math.abs(dot(it, it) - 1) < tol }
+        val square = kotlin.math.abs(dot(c0, c1)) < tol && kotlin.math.abs(dot(c1, c2)) < tol && kotlin.math.abs(dot(c0, c2)) < tol
+        if (unit && square && dot(cross(c0, c1), c2) > 0) return m.copyOf()
+        val zLen = sqrt(dot(c2, c2))
+        if (zLen < 1e-12) return null
+        val z = DoubleArray(3) { c2[it] / zLen }
+        val x0 = cross(c1, z)
+        val xLen = sqrt(dot(x0, x0))
+        if (xLen < 1e-12) return null
+        val x = DoubleArray(3) { x0[it] / xLen }
+        val y = cross(z, x)
+        return floatArrayOf(
+            x[0].toFloat(), x[1].toFloat(), x[2].toFloat(), 0f,
+            y[0].toFloat(), y[1].toFloat(), y[2].toFloat(), 0f,
+            z[0].toFloat(), z[1].toFloat(), z[2].toFloat(), 0f,
+            m[12], m[13], m[14], 1f,
+        )
     }
 
     /**

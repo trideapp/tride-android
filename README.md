@@ -1,4 +1,4 @@
-# TrideKit for Android — Tride 0.14.0
+# TrideKit for Android — Tride 0.15.0
 
 Plays Tride scenes (`.trd`) in an Android app: the Tride runtime, Filament rendering (Vulkan on a phone,
 OpenGL ES on the emulator) and a Compose view over them. A scene is built in Tride Editor ([tride-editor](https://github.com/trideapp/tride-editor)) and exported
@@ -6,7 +6,7 @@ as `.trd`; the app only writes values into it (bindings) and fires triggers, and
 show. It is the same scene and the same runtime as on the iPhone and in the browser.
 
 This repository is built from the Tride source repository: one commit is one release; changes are not
-accepted here — questions and bugs go to Issues. Licence — `LICENSE` (Tride Players Licence 1.1); third-party
+accepted here — questions and bugs: support@tride.ws. Licence — `LICENSE` (Tride Players Licence 1.1); third-party
 components and their licences — `THIRD_PARTY_NOTICES.md`; which build the release comes from — `SNAPSHOT.md`;
 what is new — `CHANGELOG.md`.
 
@@ -14,9 +14,9 @@ what is new — `CHANGELOG.md`.
 
 | | |
 |---|---|
-| GitHub Packages | `studio.tride:tride-core`, `tridekit`, `tridekit-compose` 0.14.0 and the Filament they are built on, `studio.tride.filament:filament-android`, `gltfio-android`, `filament-utils-android` — this repository's Maven packages |
+| `maven/` | `studio.tride:tride-core`, `tridekit`, `tridekit-compose` 0.15.0 and the Filament they are built on, `studio.tride.filament:filament-android`, `gltfio-android`, `filament-utils-android` — a Maven repository as a folder, to build with, no token needed |
+| GitHub Packages | the same packages as this repository's Maven packages — Gradle fetches them with a GitHub token |
 | Releases | `TridePlayer.apk` — the example player, ready to install |
-| `maven/` | the same packages as a folder — a Maven repository for building without a token |
 | `Sources/` | the libraries' Kotlin sources: `tridekit` (the Filament bridge, `TrideKitScene`), `tridekit-compose` (`TrideSceneView`), `tride-core` (the uniffi binding over the prebuilt runtime `.so`). They also sit beside each AAR as a `-sources.jar` — Android Studio shows them when you jump into the library's code |
 | `Examples/TridePlayer` | the example's source — a Gradle project that takes TrideKit from `maven/` |
 | `Docs/` | [API](Docs/API.md) |
@@ -48,8 +48,27 @@ the rest come from Google and Maven Central by themselves.
   there `TrideKitScene(…)` throws an `IllegalStateException` naming the ABIs; with the filter such a phone
   simply does not install the app. On 64-bit devices the filter also drops the unused 32-bit libraries.
 
-1. Add the TrideKit repository in `settings.gradle.kts`. The packages are on GitHub Packages
-   (`trideapp/tride-android`): you need a GitHub token (classic) with `read:packages`, and in
+1. Add the TrideKit repository in `settings.gradle.kts`. The simplest is the `maven/` folder of this
+   repository: copy it into the project (e.g. as `tride-maven`), no account or token needed:
+
+```kotlin
+dependencyResolutionManagement {
+    repositories {
+        exclusiveContent {
+            forRepository { maven { url = uri(file("tride-maven")) } }
+            filter {
+                includeGroup("studio.tride")             // TrideKit
+                includeGroup("studio.tride.filament")    // the Filament TrideKit is built on
+            }
+        }
+        google()
+        mavenCentral()
+    }
+}
+```
+
+   Or from GitHub Packages (`trideapp/tride-android`), without copying the folder: Gradle asks it for a
+   token even for a public package — a GitHub token (classic) with `read:packages`, and in
    `~/.gradle/gradle.properties` — `gprUsername=<login>` and `gprPassword=<token>`:
 
 ```kotlin
@@ -74,34 +93,15 @@ dependencyResolutionManagement {
 }
 ```
 
-   Without a token the project still configures; the error comes only when Gradle fetches the
+   Without the properties the project still configures; the error comes only when Gradle fetches the
    `studio.tride` and `studio.tride.filament` packages, and it names the missing properties (`The
    following Gradle properties are missing for 'gpr' credentials: gprUsername, gprPassword`).
-
-   Without a token — the `maven/` folder of this repository: copy it into the project (e.g. as
-   `tride-maven`) and use it instead of GitHub Packages:
-
-```kotlin
-dependencyResolutionManagement {
-    repositories {
-        exclusiveContent {
-            forRepository { maven { url = uri(file("tride-maven")) } }
-            filter {
-                includeGroup("studio.tride")             // TrideKit
-                includeGroup("studio.tride.filament")    // the Filament TrideKit is built on
-            }
-        }
-        google()
-        mavenCentral()
-    }
-}
-```
 
 2. The app module's dependency (the Compose view brings `tridekit` and `tride-core` with it):
 
 ```kotlin
 android { defaultConfig { ndk { abiFilters += listOf("arm64-v8a", "x86_64") } } }   // required, see the requirements
-dependencies { implementation("studio.tride:tridekit-compose:0.14.0") }
+dependencies { implementation("studio.tride:tridekit-compose:0.15.0") }
 ```
 
 3. Put a `.trd` exported from Tride Editor into `src/main/assets/` and show it:

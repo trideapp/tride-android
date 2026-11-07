@@ -46,6 +46,9 @@
  *     Filament).
  *   - `instanceColors` is bound only on a batch whose node material samples it (`TrideMaterialGraph.
  *     instanceColors`); its 1 × capacity texture is re-uploaded with the transforms on every sync.
+ *   - Data textures (pulse tables, instance transforms and rows) are staged by a sync and go up only in a
+ *     frame Filament draws (`flushDataTextures`): a skipped frame's bytes are replaced by the next sync's,
+ *     and the buffers come back through the descriptor's callback (`DataTextureUploads`).
  *   - A renderable wearing an Add package (`TrideMaterialGraph.castShadows` false) neither
  *     casts nor receives shadows (under VSM and PCSS Filament makes every receiver a caster): trunks, file
  *     meshes and batches when built.
@@ -1679,25 +1682,22 @@ internal class FilamentGenerators(
         s.ib?.let { engine.destroyIndexBuffer(it) }; s.ib = null
         destroyFilePartsAndMorph(s)
         s.flowMi?.let { engine.destroyMaterialInstance(it) }; s.flowMi = null
-        s.pulseTexture?.let { engine.destroyTexture(it) }; s.pulseTexture = null
+        s.pulseTexture?.let { destroyDataTexture(it) }; s.pulseTexture = null
         s.pulseCapacity = 0; s.pulseCount = 0
     }
 
     private fun allocatePulseTable(s: MeshState, capacity: Int) {
-        s.pulseTexture?.let { engine.destroyTexture(it) }
+        s.pulseTexture?.let { destroyDataTexture(it) }
         s.pulseCapacity = capacity.coerceIn(1, PULSE_CAPACITY_MAX)
         s.pulseTexture = Texture.Builder().width(2).height(s.pulseCapacity).levels(1).sampler(Texture.Sampler.SAMPLER_2D).format(Texture.InternalFormat.RGBA32F).build(engine)
         s.flowMi!!.setParameter("pulses", s.pulseTexture!!, nearestSampler)
     }
 
     private fun uploadPulseRows(s: MeshState, rows: ByteArray?, count: Int) {
-        val bytes = s.pulseCapacity * PULSE_ROW_FLOATS * 4
-        val staging = ByteBuffer.allocateDirect(bytes).order(ByteOrder.nativeOrder())
-        if (rows != null && count > 0) {
-            staging.asFloatBuffer().put(floatsOf(rows, count * PULSE_ROW_FLOATS))
+        dataUploads.stage(s.pulseTexture!!, s.pulseCapacity * PULSE_ROW_FLOATS * 4) {
+            if (rows != null && count > 0) it.put(rows, 0, count * PULSE_ROW_FLOATS * 4)
+            it.zeroRest()
         }
-        staging.rewind()
-        s.pulseTexture!!.setImage(engine, 0, Texture.PixelBufferDescriptor(staging, Texture.Format.RGBA, Texture.Type.FLOAT))
         s.pulseCount = count
         s.flowMi!!.setParameter("pulseCount", count.toFloat())
     }
@@ -1856,7 +1856,7 @@ internal class FilamentGenerators(
         if (!state.flow && state.flowMi != null) {
             // Pulses left the recipe: the renderable points at the plain material again.
             engine.destroyMaterialInstance(state.flowMi!!); state.flowMi = null
-            state.pulseTexture?.let { engine.destroyTexture(it) }; state.pulseTexture = null
+            state.pulseTexture?.let { destroyDataTexture(it) }; state.pulseTexture = null
             state.pulseCapacity = 0; state.pulseCount = 0
         }
         state.lines = lines; state.mi = mi; state.primitives = primitives; state.epoch = g.epoch
@@ -1969,6 +1969,27 @@ internal class FilamentGenerators(
         return true
     }
 
+    // ---- data textures (pulse tables, instance transforms and rows) -----------------------------
+    /** Runs the descriptor's release where Filament purges its callbacks (the thread that flushes). */
+    private val inline = java.util.concurrent.Executor { it.run() }
+    private val dataUploads = DataTextureUploads<Texture> { texture, buffer, release ->
+        // The pixel type follows the texture's format: RGBA16F rows are binary16, RGBA32F ones float.
+        val type = if (texture.format == Texture.InternalFormat.RGBA16F) Texture.Type.HALF else Texture.Type.FLOAT
+        texture.setImage(engine, 0, Texture.PixelBufferDescriptor(buffer, Texture.Format.RGBA, type, 1, 0, 0, 0, inline, release))
+    }
+
+    /** The staged data-texture bytes up to the GPU — the bridge calls it once Filament draws a frame. */
+    fun flushDataTextures() = dataUploads.flush()
+
+    /** Data textures waiting for a drawn frame, buffers made and uploads staged so far (tests). */
+    fun dataTexturesStaged(): Int = dataUploads.staged
+    fun dataTextureBuffersMade(): Int = dataUploads.buffersMade
+    fun dataTextureStages(): Int = dataUploads.stages
+    /** The most buffers one data texture of the scene has in Filament's hands now (tests). */
+    fun dataTextureBuffersInFlight(): Int = dataUploads.inFlightMax
+
+    private fun destroyDataTexture(t: Texture) { dataUploads.forget(t); engine.destroyTexture(t) }
+
     // ---- module instances (data-texture instancing) --------------------------------------------
     private class ModuleMesh(val vb: VertexBuffer, val ib: IndexBuffer, val indexCount: Int, val radius: Float, val contentHash: String)
     private class Batch(val entity: Int, var meshUid: String, var mi: MaterialInstance, var masked: Boolean, var thin: Boolean) {
@@ -2060,8 +2081,8 @@ internal class FilamentGenerators(
         if (b.visible) scene.removeEntity(b.entity)
         b.visible = false
         if (rm.hasComponent(b.entity)) rm.destroy(b.entity)
-        b.texture?.let { engine.destroyTexture(it) }; b.texture = null
-        b.colorTexture?.let { engine.destroyTexture(it) }; b.colorTexture = null
+        b.texture?.let { destroyDataTexture(it) }; b.texture = null
+        b.colorTexture?.let { destroyDataTexture(it) }; b.colorTexture = null
         releaseBatchInstance(b)
         if (tm.hasComponent(b.entity)) tm.destroy(tm.getInstance(b.entity))
         EntityManager.get().destroy(b.entity)
@@ -2163,19 +2184,17 @@ internal class FilamentGenerators(
             if (batch.masked && cutoff != null) batch.mi.setMaskThreshold(cutoff)
         }
         if (batch.texture == null || count > batch.capacity) {
-            batch.texture?.let { engine.destroyTexture(it) }
-            batch.colorTexture?.let { engine.destroyTexture(it) }; batch.colorTexture = null
+            batch.texture?.let { destroyDataTexture(it) }
+            batch.colorTexture?.let { destroyDataTexture(it) }; batch.colorTexture = null
             batch.capacity = min(max(64, (count * 3 + 1) / 2), instanceRows)
             batch.texture = Texture.Builder().width(4).height(batch.capacity).levels(1).sampler(Texture.Sampler.SAMPLER_2D).format(Texture.InternalFormat.RGBA32F).build(engine)
         }
-        val staging = ByteBuffer.allocateDirect(batch.capacity * TRANSFORM_STRIDE_BYTES).order(ByteOrder.nativeOrder())
+        dataUploads.stage(batch.texture!!, batch.capacity * TRANSFORM_STRIDE_BYTES) {
+            it.put(transforms, first * TRANSFORM_STRIDE_BYTES, count * TRANSFORM_STRIDE_BYTES)
+            it.zeroRest()
+        }
         val src = ByteBuffer.wrap(transforms, first * TRANSFORM_STRIDE_BYTES, count * TRANSFORM_STRIDE_BYTES)
             .slice().order(ByteOrder.LITTLE_ENDIAN)
-        val floats = FloatArray(count * 16)
-        src.asFloatBuffer().get(floats)
-        staging.asFloatBuffer().put(floats)
-        staging.rewind()
-        batch.texture!!.setImage(engine, 0, Texture.PixelBufferDescriptor(staging, Texture.Format.RGBA, Texture.Type.FLOAT))
         batch.mi.setParameter("instanceTransforms", batch.texture!!, nearestSampler)
         uploadInstanceColors(batch, colors, first, count)
         batch.bounds = instancesBounds(src, count, mesh.radius)
@@ -2198,16 +2217,14 @@ internal class FilamentGenerators(
      */
     private fun uploadInstanceColors(batch: Batch, colors: ByteArray?, first: Int, count: Int) {
         if (batch.graphKey?.let { graphs[it] }?.instanceColors != true) {
-            batch.colorTexture?.let { engine.destroyTexture(it) }; batch.colorTexture = null
+            batch.colorTexture?.let { destroyDataTexture(it) }; batch.colorTexture = null
             return
         }
         val texture = batch.colorTexture ?: Texture.Builder().width(1).height(batch.capacity).levels(1)
             .sampler(Texture.Sampler.SAMPLER_2D).format(Texture.InternalFormat.RGBA16F).build(engine)
             .also { batch.colorTexture = it }
         val rows = InstanceColorRows.slice(colors, first, count, batch.capacity)
-        val staging = ByteBuffer.allocateDirect(rows.size * 2).order(ByteOrder.nativeOrder())
-        staging.asShortBuffer().put(rows)
-        texture.setImage(engine, 0, Texture.PixelBufferDescriptor(staging, Texture.Format.RGBA, Texture.Type.HALF))
+        dataUploads.stage(texture, rows.size * 2) { it.asShortBuffer().put(rows) }
         batch.mi.setParameter("instanceColors", texture, nearestSampler)
     }
 

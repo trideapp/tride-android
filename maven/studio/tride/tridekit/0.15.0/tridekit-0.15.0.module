@@ -1,0 +1,187 @@
+{
+  "formatVersion": "1.1",
+  "component": {
+    "group": "studio.tride",
+    "module": "tridekit",
+    "version": "0.15.0",
+    "attributes": {
+      "org.gradle.status": "release"
+    }
+  },
+  "createdBy": {
+    "gradle": {
+      "version": "8.14.3"
+    }
+  },
+  "variants": [
+    {
+      "name": "releaseVariantReleaseApiPublication",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.libraryelements": "aar",
+        "org.gradle.usage": "java-api"
+      },
+      "dependencies": [
+        {
+          "group": "studio.tride",
+          "module": "tride-core",
+          "version": {
+            "requires": "0.15.0"
+          }
+        },
+        {
+          "group": "studio.tride.filament",
+          "module": "filament-android",
+          "version": {
+            "requires": "1.77.1"
+          }
+        },
+        {
+          "group": "studio.tride.filament",
+          "module": "gltfio-android",
+          "version": {
+            "requires": "1.77.1"
+          }
+        },
+        {
+          "group": "studio.tride.filament",
+          "module": "filament-utils-android",
+          "version": {
+            "requires": "1.77.1"
+          }
+        },
+        {
+          "group": "androidx.media3",
+          "module": "media3-exoplayer",
+          "version": {
+            "requires": "1.10.1"
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib",
+          "version": {
+            "requires": "2.4.0"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "tridekit-0.15.0.aar",
+          "url": "tridekit-0.15.0.aar",
+          "size": 5140641,
+          "sha512": "6b4d5aafbe17fdf21e0969a6553b6c0356a0a50001596b2570bde5cf30175915324fe54c3de6976f598376b4433719ceae1f59e2a61d2fb3646799ba3b8f8392",
+          "sha256": "8faa1080b879fc9cb3818ebf9e05f1811968071952fda676e8ce2decaa0fb4d9",
+          "sha1": "accca93bd069e591b257b23d71693aa860d4129c",
+          "md5": "810ee7891b6d07bfd685614662cbbd8a"
+        }
+      ]
+    },
+    {
+      "name": "releaseVariantReleaseRuntimePublication",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.libraryelements": "aar",
+        "org.gradle.usage": "java-runtime"
+      },
+      "dependencies": [
+        {
+          "group": "androidx.annotation",
+          "module": "annotation",
+          "version": {
+            "requires": "1.9.1"
+          }
+        },
+        {
+          "group": "androidx.exifinterface",
+          "module": "exifinterface",
+          "version": {
+            "requires": "1.3.6"
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlinx",
+          "module": "kotlinx-coroutines-android",
+          "version": {
+            "requires": "1.11.0"
+          }
+        },
+        {
+          "group": "studio.tride",
+          "module": "tride-core",
+          "version": {
+            "requires": "0.15.0"
+          }
+        },
+        {
+          "group": "studio.tride.filament",
+          "module": "filament-android",
+          "version": {
+            "requires": "1.77.1"
+          }
+        },
+        {
+          "group": "studio.tride.filament",
+          "module": "gltfio-android",
+          "version": {
+            "requires": "1.77.1"
+          }
+        },
+        {
+          "group": "studio.tride.filament",
+          "module": "filament-utils-android",
+          "version": {
+            "requires": "1.77.1"
+          }
+        },
+        {
+          "group": "androidx.media3",
+          "module": "media3-exoplayer",
+          "version": {
+            "requires": "1.10.1"
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib",
+          "version": {
+            "requires": "2.4.0"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "tridekit-0.15.0.aar",
+          "url": "tridekit-0.15.0.aar",
+          "size": 5140641,
+          "sha512": "6b4d5aafbe17fdf21e0969a6553b6c0356a0a50001596b2570bde5cf30175915324fe54c3de6976f598376b4433719ceae1f59e2a61d2fb3646799ba3b8f8392",
+          "sha256": "8faa1080b879fc9cb3818ebf9e05f1811968071952fda676e8ce2decaa0fb4d9",
+          "sha1": "accca93bd069e591b257b23d71693aa860d4129c",
+          "md5": "810ee7891b6d07bfd685614662cbbd8a"
+        }
+      ]
+    },
+    {
+      "name": "releaseVariantReleaseSourcePublication",
+      "attributes": {
+        "org.gradle.category": "documentation",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.docstype": "sources",
+        "org.gradle.usage": "java-runtime"
+      },
+      "files": [
+        {
+          "name": "tridekit-0.15.0-sources.jar",
+          "url": "tridekit-0.15.0-sources.jar",
+          "size": 143878,
+          "sha512": "826195cb436286bb66f9cc3674ec2c717b3fa5147a1ea69476ff40210d77427ebab4787073056aa1d91857fbe1284867b6498fc9ad75a43f67ce7e74b76b0cef",
+          "sha256": "6dbe6c412a3d5712a7ba921fd995eb2052300beda616bc88feda5eb592643feb",
+          "sha1": "802d2f338cb589ea370fc17a273a48bbbc08c4fb",
+          "md5": "b881ce8bfa1b67e68719f1d16750a7bb"
+        }
+      ]
+    }
+  ]
+}

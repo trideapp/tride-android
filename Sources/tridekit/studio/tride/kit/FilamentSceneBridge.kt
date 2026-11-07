@@ -1,7 +1,7 @@
 /**
  * Kotlin over Filament-Android — the applier a frame lands on: engine / view / scene / cameras, the scene
  * built from the places of the core's scene record, the place → entity map, node TRS / visibility / morph
- * weights, lights and cameras on their carrier places, IBL + skybox + background, the view's render settings
+ * weights, lights and cameras on their nodes' places, IBL + skybox + background, the view's render settings
  * and the render loop.
  *
  * Public API:
@@ -17,15 +17,19 @@
  *
  * Non-obvious constraints:
  *   - No gltfio asset: one bridge-owned entity per place, addressed by its number (one lookup); the meshes
- *     hang under the places (`FilamentGenerators`). `addLights` / `addCameras` build the Light (as
- *     gltfio builds a glTF node's: a spot is FOCUSED_SPOT, at the origin looking down -Z, falloff 10 without a
- *     range) and Camera components on a carrier place, whose pose stays the place's. A node's visibility
- *     stops at the places under it: each takes its own value from the core.
+ *     hang under the places (`FilamentGenerators`). `addLights` builds the Light component on its node's place
+ *     entity as gltfio builds a glTF node's (a spot is FOCUSED_SPOT, at the origin looking down -Z): position and
+ *     direction go through the node's world (Filament turns the direction as a normal, so a non-uniform scale
+ *     bends it as gltfio's does; range and intensity stay unscaled, KHR_lights_punctual). `addCameras` builds the
+ *     Camera component on an entity of its own that follows its node's world with the scaling ignored, before
+ *     every frame and every read (glTF 2.0 §3.10.2; Filament wants a rigid camera model matrix). The values are
+ *     the record's, resolved by the core: no default of the bridge's own. A node's visibility stops at the
+ *     places under it: each takes its own value from the core; a hidden node's light leaves the scene.
  *   - Host-side choices made here: the default camera is the core's framing (`framingFor`), asked
  *     at load and when the buffer's aspect changes — until `useFreeCamera` takes the active scene
  *     camera's pose and perspective lens over (as iOS), which then stays until the next load;
  *     a camera's aperture (f-number) also sets shutter and ISO so exposure stays that of f/16, 1/125 s,
- *     ISO 100; a light without `castShadows` casts unless it is a point light; on the emulator's GL the
+ *     ISO 100; on the emulator's GL the
  *     scene is drawn without shadows (any shadow map blackens the frame there) — decided by the backend the
  *     engine was made on, not by the device: the emulator's Vulkan draws them; the background is a solid
  *     grey skybox until the scene sets one.
@@ -93,15 +97,6 @@ private const val ONE_DIMENSIONAL_LUT = "engine.color_grading.use_1d_lut"
 /** Up to five suns light the scene, the brightest casts the shadow (Filament's rule). */
 private fun engineConfig() = Engine.Config().apply { enableMultipleDirectionalLights = true }
 
-/** The f-number of a camera without an aperture — the core's (`CameraDefaultsTest` checks it). */
-internal const val DEFAULT_CAMERA_APERTURE = 16.0
-/** gltfio's falloff of a glTF light without a range (`AssetLoader::createLight`), metres. */
-private const val GLTF_DEFAULT_FALLOFF = 10f
-/**
- * The vertical fov of a perspective scene camera without `yfov` (glTF requires one): the core's, 60°, so a tap
- * ray and a Look-at-Camera tag see what is drawn (`CameraDefaultsTest` checks it).
- */
-internal const val DEFAULT_CAMERA_YFOV = Math.PI / 3
 /** The default camera's lens before the core framed the scene: 45°, as the core's framing and iOS. */
 private const val DEFAULT_VIEW_YFOV = Math.PI / 4
 
@@ -117,33 +112,31 @@ internal fun orthoHalfExtents(xmag: Double, ymag: Double, aspect: Double): Pair<
     return Pair(halfH * aspect, halfH)
 }
 
-/** A manifest light for [FilamentSceneBridge.addLights] — Euler already resolved to a `-Z` direction. */
+/** A light of the scene record for [FilamentSceneBridge.addLights], its values resolved by the core, on node place [place]. */
 internal class LightSpec(
     val id: String,
     val type: String,
     val color: DoubleArray,
     val intensity: Double,
-    val range: Double?,
-    val innerConeAngle: Double?,
-    val outerConeAngle: Double?,
-    val castShadows: Boolean?,
-    val position: DoubleArray?,
-    val direction: DoubleArray,
-    val carrierPlace: Int?,
+    val range: Double,
+    val innerConeAngle: Double,
+    val outerConeAngle: Double,
+    val castShadows: Boolean,
+    val place: Int,
 )
 
-/** A manifest camera for [FilamentSceneBridge.addCameras]; its pose lives on the carrier node. */
+/** A camera of the scene record for [FilamentSceneBridge.addCameras], its lens resolved by the core, on node place [place]. */
 internal class CameraSpec(
     val id: String,
     val perspective: Boolean,
-    val yfov: Double?,
-    val xmag: Double?,
-    val ymag: Double?,
+    val yfov: Double,
+    val xmag: Double,
+    val ymag: Double,
     val znear: Double,
-    val zfar: Double?,
-    val focusDistance: Double?,
-    val aperture: Double?,
-    val carrierPlace: Int?,
+    val zfar: Double,
+    val focusDistance: Double,
+    val aperture: Double,
+    val place: Int,
     val focusTargetPlace: Int?,
 )
 
@@ -160,8 +153,6 @@ internal class FilamentSceneBridge(
             Utils.init()
             true
         }
-        /** The far plane of a camera without `zfar` (glTF: infinite): Filament needs a finite one, 1000 m. */
-        private const val INFINITE_FAR = 1000.0
         private const val MAX_SATURATION = 2f
         /** Said once a process: the GPU's targets cannot hold half floats (R-DegradeNoticeWarnOnce). */
         @Volatile private var warnedNoFloatTargets = false
@@ -213,14 +204,13 @@ internal class FilamentSceneBridge(
     private val placeEntities = ArrayList<Int>()
     private val placeEntitySet = HashSet<Int>()
 
+    /** Light id → its node's place entity (the Light component sits on it). */
     private val lightEntities = HashMap<String, Int>()
-    /** Lights this bridge created off any carrier place — `dispose` frees them. */
-    private val builtLights = ArrayList<Int>()
-    private val carrierOwnedLights = HashSet<String>()
 
+    /** A scene camera: its own [entity] (the Camera component) follows node place entity [node], scaling ignored. */
     private class CameraRecord(
-        val entity: Int, val perspective: Boolean, var yfov: Double, val xmag: Double, val ymag: Double,
-        var znear: Double, var zfar: Double?, var focusDistance: Double, var aperture: Double, val focusTarget: Int?,
+        val entity: Int, val node: Int, val perspective: Boolean, var yfov: Double, val xmag: Double, val ymag: Double,
+        var znear: Double, var zfar: Double, var focusDistance: Double, var aperture: Double, val focusTarget: Int?,
     )
     private val cameras = HashMap<String, CameraRecord>()
     var activeCameraId: String? = null
@@ -370,13 +360,19 @@ internal class FilamentSceneBridge(
         return (0 until n).map { history[it] }.filter { it.gpuFrameDuration > 0 }.associate { it.frameId to it.gpuFrameDuration / 1e6 }
     }
 
+    /** Holds Filament's driver thread for [nanos] — a driver stuck in a long frame, as SwiftShader's first (tests). */
+    internal fun stallDriver(nanos: Long) { if (!disposed) renderer.pauseRenderThread(nanos) }
+
     /** One frame when a swap chain is attached; `false` when Filament skipped it (too soon after the last). */
     fun render(frameTimeNanos: Long): Boolean {
         val sc = swapChain ?: return false
         if (disposed) return false
+        followCameraNodes()
         updateFocusTarget()
         syncPixelation()
+        // A skipped frame uploads no data texture: the next tick's bytes replace the staged ones.
         if (!renderer.beginFrame(sc, frameTimeNanos)) return false
+        generators?.flushDataTextures()
         renderer.render(view)
         // The scene view drew into the pixelation pass's frame — its blocks onto the swap chain.
         pixelation?.render(renderer)
@@ -391,18 +387,18 @@ internal class FilamentSceneBridge(
         releaseSwapChain()
         generators = null // the setter disposes it
         teardownIndirectLight()
-        for (e in builtLights) {
-            filamentScene.removeEntity(e)
-            engine.lightManager.destroy(e)
-            EntityManager.get().destroy(e)
-        }
-        builtLights.clear()
-        // The places and the Light / Camera components built on carriers, after what hung under them.
         val tm = engine.transformManager
+        // The scene cameras' own entities.
+        for (rec in cameras.values) {
+            engine.destroyCameraComponent(rec.entity)
+            if (tm.hasComponent(rec.entity)) tm.destroy(rec.entity)
+            EntityManager.get().destroy(rec.entity)
+        }
+        cameras.clear()
+        // The places and the Light components built on them, after what hung under them.
         for (e in placeEntities) {
             filamentScene.removeEntity(e)
             if (engine.lightManager.hasComponent(e)) engine.lightManager.destroy(e)
-            if (engine.getCameraComponent(e) != null) engine.destroyCameraComponent(e)
             if (tm.hasComponent(e)) tm.destroy(e)
             EntityManager.get().destroy(e)
         }
@@ -511,6 +507,7 @@ internal class FilamentSceneBridge(
     fun useFreeCamera() {
         if (disposed) return
         val id = activeCameraId ?: return
+        followCameraNodes()
         val rec = cameras[id]
         val shown = rec?.let { engine.getCameraComponent(it.entity) }
         if (rec == null || shown == null) {
@@ -530,7 +527,7 @@ internal class FilamentSceneBridge(
             pose = FramingPose(eye, DoubleArray(3) { eye[it] + forward[it] * distance }),
             yfov = if (rec.perspective) rec.yfov else last?.yfov ?: DEFAULT_VIEW_YFOV,
             near = if (rec.perspective) rec.znear else last?.near ?: rec.znear,
-            far = if (rec.perspective) rec.zfar?.takeIf { it > rec.znear } ?: INFINITE_FAR else last?.far ?: INFINITE_FAR,
+            far = if (rec.perspective) rec.zfar else last?.far ?: rec.zfar,
         )
         framed = taken
         poseTaken = true
@@ -552,6 +549,7 @@ internal class FilamentSceneBridge(
 
     private fun cameraPose(camera: Camera): HostCameraPose {
         check(!disposed) { "FilamentSceneBridge is disposed" }
+        followCameraNodes()
         val m = camera.getModelMatrix(FloatArray(16))
         val (t, r, _) = TrideMath.decomposeTRS(m)
         val yfov = Math.toRadians(camera.getFieldOfViewInDegrees(Camera.Fov.VERTICAL))
@@ -588,11 +586,18 @@ internal class FilamentSceneBridge(
         needsRender = true
     }
 
-    /** Visibility layer bit 0 on the node and every TransformManager descendant. */
+    /**
+     * Visibility layer bit 0 on the node and every TransformManager descendant; the node's light (if it holds
+     * one) shines only while the node is drawn — a hidden group darkens the lights under it.
+     */
     fun setNodeVisible(place: Int, visible: Boolean) {
         if (disposed) return
         val slot = indexToSlot[place] ?: return
-        setLayerRecursive(nodeStates[slot].entity, visible)
+        val entity = nodeStates[slot].entity
+        if (engine.lightManager.hasComponent(entity)) {
+            if (visible) filamentScene.addEntity(entity) else filamentScene.removeEntity(entity)
+        }
+        setLayerRecursive(entity, visible)
         needsRender = true
     }
 
@@ -633,58 +638,35 @@ internal class FilamentSceneBridge(
     private fun isPunctual(t: LightManager.Type) =
         t == LightManager.Type.POINT || t == LightManager.Type.SPOT || t == LightManager.Type.FOCUSED_SPOT
 
-    private fun castsShadows(spec: LightSpec, type: LightManager.Type): Boolean =
-        spec.castShadows ?: (type != LightManager.Type.POINT)
-
+    /**
+     * Each light on its node's place entity, as gltfio builds a glTF node's: at the origin looking down -Z, its
+     * pose the node's; its values the record's (resolved by the core). A place that is no free place of the scene
+     * draws no light (said once).
+     */
     fun addLights(lights: List<LightSpec>) {
         if (disposed) return
         val lm = engine.lightManager
         val tm = engine.transformManager
         for (spec in lights) {
+            val entity = entityForPlace(spec.place)
+            if (entity == null || lm.hasComponent(entity)) {
+                loadProblem(spec.id, "addLights: '${spec.id}' node place ${spec.place} is no free place of the scene — the light is not drawn")
+                continue
+            }
             val type = lightType(spec.type)
-            var entity = 0
-            var poseOnCarrier = false
-            spec.carrierPlace?.let { idx ->
-                val candidate = entityForPlace(idx)
-                if (candidate != null && candidate in placeEntitySet && !lm.hasComponent(candidate)) {
-                    // A carrier place: the light is built on it as gltfio builds a glTF node's; the pose
-                    // is the place's, the place teardown frees it.
-                    val built = if (type == LightManager.Type.SPOT) LightManager.Type.FOCUSED_SPOT else type
-                    LightManager.Builder(built).direction(0f, 0f, -1f).falloff(GLTF_DEFAULT_FALLOFF)
-                        .castShadows(castsShadows(spec, built)).build(engine, candidate)
-                    entity = candidate; poseOnCarrier = true
-                } else {
-                    loadProblem(spec.id, "addLights: '${spec.id}' carrier place $idx is not a free place of the scene — the light keeps its authored pose")
-                }
-            }
-            if (!poseOnCarrier) {
-                entity = EntityManager.get().create()
-                LightManager.Builder(type).castShadows(castsShadows(spec, type)).build(engine, entity)
-                builtLights += entity
-            }
-            if (!lm.hasComponent(entity)) continue
+            val built = if (type == LightManager.Type.SPOT) LightManager.Type.FOCUSED_SPOT else type
+            LightManager.Builder(built).direction(0f, 0f, -1f).castShadows(spec.castShadows).build(engine, entity)
             val li = lm.getInstance(entity)
-            val actualType = lm.getType(li)
             lm.setColor(li, spec.color[0].toFloat(), spec.color[1].toFloat(), spec.color[2].toFloat())
             // Cone before intensity: FOCUSED_SPOT rescales its candela on every cone change.
-            if (actualType == LightManager.Type.SPOT || actualType == LightManager.Type.FOCUSED_SPOT) {
-                lm.setSpotLightCone(li, (spec.innerConeAngle ?: 0.0).toFloat(), (spec.outerConeAngle ?: (Math.PI / 4)).toFloat())
-            }
-            if (isPunctual(actualType)) lm.setIntensityCandela(li, spec.intensity.toFloat()) else lm.setIntensity(li, spec.intensity.toFloat())
-            if (!poseOnCarrier) {
-                val d = TrideMath.normalize3(spec.direction)
-                lm.setDirection(li, d[0].toFloat(), d[1].toFloat(), d[2].toFloat())
-                spec.position?.let { lm.setPosition(li, it[0].toFloat(), it[1].toFloat(), it[2].toFloat()) }
-            }
-            spec.range?.takeIf { it > 0 }?.let { lm.setFalloff(li, it.toFloat()) }
-            lm.setShadowCaster(li, castsShadows(spec, actualType))
+            if (built == LightManager.Type.FOCUSED_SPOT) lm.setSpotLightCone(li, spec.innerConeAngle.toFloat(), spec.outerConeAngle.toFloat())
+            if (isPunctual(built)) lm.setIntensityCandela(li, spec.intensity.toFloat()) else lm.setIntensity(li, spec.intensity.toFloat())
+            // A directional light's range is 0: it reaches everywhere.
+            if (spec.range > 0) lm.setFalloff(li, spec.range.toFloat())
             filamentScene.addEntity(entity)
             lightEntities[spec.id] = entity
-            if (poseOnCarrier) carrierOwnedLights += spec.id else carrierOwnedLights -= spec.id
-            if (tm.hasComponent(entity)) {
-                val w = tm.getWorldTransform(tm.getInstance(entity), FloatArray(16))
-                Log.i(TAG, "addLights: '${spec.id}' ${if (poseOnCarrier) "carrier-anchored" else "bridge-built"} world=(${w[12]}, ${w[13]}, ${w[14]})")
-            }
+            val w = tm.getWorldTransform(tm.getInstance(entity), FloatArray(16))
+            Log.i(TAG, "addLights: '${spec.id}' on place ${spec.place} world=(${w[12]}, ${w[13]}, ${w[14]})")
         }
         needsRender = true
     }
@@ -713,7 +695,6 @@ internal class FilamentSceneBridge(
         val dir = TrideMath.normalize3(DoubleArray(3) { r -> (w[r] * d[0] + w[4 + r] * d[1] + w[8 + r] * d[2]).toDouble() })
         return pos + dir
     }
-    fun lightPoseOwnedByCarrier(id: String) = id in carrierOwnedLights
 
     fun setLightColor(id: String, r: Double, g: Double, b: Double) {
         if (disposed) return
@@ -752,21 +733,6 @@ internal class FilamentSceneBridge(
         view.setShadowingEnabled(shadowingFor(enabled)); needsRender = true
     }
 
-    fun setLightDirection(id: String, direction: DoubleArray) {
-        if (disposed) return
-        if (lightPoseOwnedByCarrier(id)) return
-        val li = lightInstance(id) ?: return
-        val d = TrideMath.normalize3(direction)
-        engine.lightManager.setDirection(li, d[0].toFloat(), d[1].toFloat(), d[2].toFloat()); needsRender = true
-    }
-
-    fun setLightPosition(id: String, p: DoubleArray) {
-        if (disposed) return
-        if (lightPoseOwnedByCarrier(id)) return
-        val li = lightInstance(id) ?: return
-        engine.lightManager.setPosition(li, p[0].toFloat(), p[1].toFloat(), p[2].toFloat()); needsRender = true
-    }
-
     fun setLightRange(id: String, range: Double) {
         if (disposed) return
         if (range <= 0) return
@@ -800,19 +766,18 @@ internal class FilamentSceneBridge(
     private fun applyProjection(rec: CameraRecord) {
         val cam = engine.getCameraComponent(rec.entity) ?: return
         val aspect = width.toDouble() / height.toDouble()
-        val far = rec.zfar?.takeIf { it > rec.znear } ?: INFINITE_FAR
         if (rec.perspective) {
-            cam.setProjection(Math.toDegrees(rec.yfov), aspect, rec.znear, far, Camera.Fov.VERTICAL)
+            cam.setProjection(Math.toDegrees(rec.yfov), aspect, rec.znear, rec.zfar, Camera.Fov.VERTICAL)
         } else {
             // Resize re-applies it on the new aspect.
             val (halfW, halfH) = orthoHalfExtents(rec.xmag, rec.ymag, aspect)
-            cam.setProjection(Camera.Projection.ORTHO, -halfW, halfW, -halfH, halfH, rec.znear, far)
+            cam.setProjection(Camera.Projection.ORTHO, -halfW, halfW, -halfH, halfH, rec.znear, rec.zfar)
         }
         // The view's aspect is the frame's: a camera scaled by 1 / the glTF aspect ratio (as gltfio scales its own)
         // would squeeze the picture — the scaling stays (1, 1).
         cam.setScaling(1.0, 1.0)
         applyAperture(cam, rec.aperture)
-        cam.setFocusDistance(max(rec.focusDistance, 0.0).toFloat())
+        cam.setFocusDistance(rec.focusDistance.toFloat())
     }
 
     /** The active camera focuses on its focus target's depth along the view axis. */
@@ -831,36 +796,59 @@ internal class FilamentSceneBridge(
         cam.setFocusDistance(max(depth.toDouble(), rec.znear).toFloat())
     }
 
+    /**
+     * Each scene camera on an entity of its own that follows its node's place (`followCameraNodes`), its lens the
+     * record's (resolved by the core). A place that is no place of the scene draws no camera (said once).
+     */
     fun addCameras(specs: List<CameraSpec>) {
         if (disposed) return
+        val tm = engine.transformManager
         for (spec in specs) {
-            val entity = spec.carrierPlace?.let { entityForPlace(it) }
-            // A carrier place gets its Camera component here, as gltfio gives a glTF node its own.
-            if (entity != null && entity in placeEntitySet && engine.getCameraComponent(entity) == null) engine.createCamera(entity)
-            if (entity == null || engine.getCameraComponent(entity) == null) {
-                loadProblem(spec.id, "addCameras: '${spec.id}' has no carrier place with a Camera component — skipped, the default camera stays")
+            val node = entityForPlace(spec.place)
+            if (node == null || cameras.containsKey(spec.id)) {
+                loadProblem(spec.id, "addCameras: '${spec.id}' node place ${spec.place} is no place of the scene — the camera is not drawn")
                 continue
             }
+            val entity = EntityManager.get().create()
+            tm.create(entity)
+            engine.createCamera(entity)
             val rec = CameraRecord(
-                entity = entity,
-                perspective = spec.perspective,
-                yfov = spec.yfov?.takeIf { it > 0 } ?: DEFAULT_CAMERA_YFOV,
-                xmag = spec.xmag?.takeIf { it > 0 } ?: 1.0,
-                ymag = spec.ymag?.takeIf { it > 0 } ?: 1.0,
-                znear = spec.znear.takeIf { it > 0 } ?: 0.1,
-                zfar = spec.zfar?.takeIf { it > 0 },
-                focusDistance = spec.focusDistance?.takeIf { it > 0 } ?: 0.0,
-                aperture = spec.aperture?.takeIf { it > 0 } ?: DEFAULT_CAMERA_APERTURE,
-                focusTarget = spec.focusTargetPlace?.let { entityForPlace(it) },
+                entity = entity, node = node, perspective = spec.perspective, yfov = spec.yfov, xmag = spec.xmag,
+                ymag = spec.ymag, znear = spec.znear, zfar = spec.zfar, focusDistance = spec.focusDistance,
+                aperture = spec.aperture, focusTarget = spec.focusTargetPlace?.let { entityForPlace(it) },
             )
             cameras[spec.id] = rec
+            follow(rec)
             applyProjection(rec)
-            val tm = engine.transformManager
-            if (tm.hasComponent(entity)) {
-                val w = tm.getWorldTransform(tm.getInstance(entity), FloatArray(16))
-                Log.i(TAG, "addCameras: '${spec.id}' carrier-anchored world=(${w[12]}, ${w[13]}, ${w[14]}) yfov=${rec.yfov}")
-            }
+            val w = tm.getWorldTransform(tm.getInstance(entity), FloatArray(16))
+            Log.i(TAG, "addCameras: '${spec.id}' on place ${spec.place} world=(${w[12]}, ${w[13]}, ${w[14]}) yfov=${rec.yfov}")
         }
+    }
+
+    fun hasCamera(id: String) = cameras.containsKey(id)
+
+    /** Every scene camera to its node's world, the scaling ignored (glTF 2.0 §3.10.2). */
+    private fun followCameraNodes() {
+        if (disposed) return
+        for (rec in cameras.values) follow(rec)
+    }
+
+    private fun follow(rec: CameraRecord) {
+        val tm = engine.transformManager
+        if (!tm.hasComponent(rec.node)) return
+        val world = tm.getWorldTransform(tm.getInstance(rec.node), FloatArray(16))
+        val rigid = TrideMath.rigid(world) ?: return
+        tm.setTransform(tm.getInstance(rec.entity), rigid)
+    }
+
+    /** Light [id] shines: its entity is in the Filament scene (checks); `null` for no such light. */
+    internal fun lightShines(id: String): Boolean? = lightEntities[id]?.let { filamentScene.hasEntity(it) }
+
+    /** Camera [id]'s model matrix (column-major) as its component draws it, after following its node (checks). */
+    internal fun cameraWorld(id: String): FloatArray? {
+        val rec = cameras[id] ?: return null
+        follow(rec)
+        return engine.getCameraComponent(rec.entity)?.getModelMatrix(FloatArray(16))
     }
 
     /** The scaling of camera [id]'s component (`[x, y, …]`, checks); `null` without one. */
@@ -887,25 +875,25 @@ internal class FilamentSceneBridge(
         needsRender = true
     }
 
+    /** The lens values a frame wrote (the core's, resolved; near and far come as a pair); `null` keeps one. */
     fun setCameraProjection(id: String, yfov: Double?, znear: Double?, zfar: Double?) {
         if (disposed) return
         val rec = cameras[id] ?: return
-        yfov?.takeIf { it > 0 }?.let { rec.yfov = it }
-        znear?.takeIf { it > 0 }?.let { rec.znear = it }
-        if (zfar != null) rec.zfar = zfar.takeIf { it > 0 }
+        yfov?.let { rec.yfov = it }
+        znear?.let { rec.znear = it }
+        zfar?.let { rec.zfar = it }
         applyProjection(rec); needsRender = true
     }
 
     fun setCameraFocusDistance(id: String, distance: Double) {
         if (disposed) return
         val rec = cameras[id] ?: return
-        rec.focusDistance = max(distance, 0.0)
+        rec.focusDistance = distance
         applyProjection(rec); needsRender = true
     }
 
     fun setCameraAperture(id: String, fNumber: Double) {
         if (disposed) return
-        if (fNumber <= 0) return
         val rec = cameras[id] ?: return
         rec.aperture = fNumber
         applyProjection(rec); needsRender = true

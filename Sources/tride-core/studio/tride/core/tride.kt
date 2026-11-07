@@ -959,10 +959,6 @@ internal open class UniffiVTableCallbackInterfaceTrideStateChangeListener(
 
 
 
-
-
-
-
 // A JNA Library to expose the extern-C FFI definitions.
 // This is an implementation detail which will be called internally by the public API.
 
@@ -1059,13 +1055,9 @@ internal interface UniffiLib : Library {
     ): RustBuffer.ByValue
     fun uniffi_tride_ffi_fn_method_tridescene_list_bindings(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
-    fun uniffi_tride_ffi_fn_method_tridescene_list_cameras(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
-    ): RustBuffer.ByValue
     fun uniffi_tride_ffi_fn_method_tridescene_list_deformed_nodes(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
     fun uniffi_tride_ffi_fn_method_tridescene_list_generators(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
-    ): RustBuffer.ByValue
-    fun uniffi_tride_ffi_fn_method_tridescene_list_lights(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
     fun uniffi_tride_ffi_fn_method_tridescene_list_parametric_nodes(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
@@ -1397,13 +1389,9 @@ internal interface UniffiLib : Library {
     ): Short
     fun uniffi_tride_ffi_checksum_method_tridescene_list_bindings(
     ): Short
-    fun uniffi_tride_ffi_checksum_method_tridescene_list_cameras(
-    ): Short
     fun uniffi_tride_ffi_checksum_method_tridescene_list_deformed_nodes(
     ): Short
     fun uniffi_tride_ffi_checksum_method_tridescene_list_generators(
-    ): Short
-    fun uniffi_tride_ffi_checksum_method_tridescene_list_lights(
     ): Short
     fun uniffi_tride_ffi_checksum_method_tridescene_list_parametric_nodes(
     ): Short
@@ -1513,7 +1501,7 @@ private fun uniffiCheckApiChecksums(lib: UniffiLib) {
     if (lib.uniffi_tride_ffi_checksum_func_deformers_corpus_observe() != 1755.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_tride_ffi_checksum_func_euler_to_quat() != 59573.toShort()) {
+    if (lib.uniffi_tride_ffi_checksum_func_euler_to_quat() != 25503.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_tride_ffi_checksum_func_inputs_corpus_observe() != 63565.toShort()) {
@@ -1657,16 +1645,10 @@ private fun uniffiCheckApiChecksums(lib: UniffiLib) {
     if (lib.uniffi_tride_ffi_checksum_method_tridescene_list_bindings() != 19929.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_tride_ffi_checksum_method_tridescene_list_cameras() != 62130.toShort()) {
-        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
-    }
     if (lib.uniffi_tride_ffi_checksum_method_tridescene_list_deformed_nodes() != 18167.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_tride_ffi_checksum_method_tridescene_list_generators() != 55859.toShort()) {
-        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
-    }
-    if (lib.uniffi_tride_ffi_checksum_method_tridescene_list_lights() != 15176.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_tride_ffi_checksum_method_tridescene_list_parametric_nodes() != 53329.toShort()) {
@@ -2496,14 +2478,6 @@ public interface TrideSceneInterface {
     fun `listBindings`(): List<TrideBindingDescriptor>
     
     /**
-     * List all authored cameras from `manifest.cameras[]`.
-     * Byte-faithful with [`tride_runtime_api::RuntimeHandle::manifest`];
-     * empty for legacy `.trd` archives without cameras. iOS hosts
-     * enumerate at load and drive `view->setCamera` on the active slug.
-     */
-    fun `listCameras`(): List<TrideCameraDescriptor>
-    
-    /**
      * Uids of every node drawn bent now.
      */
     fun `listDeformedNodes`(): List<kotlin.String>
@@ -2513,14 +2487,6 @@ public interface TrideSceneInterface {
      * `manifest.generators[]`; hosts pair each with its hosting node via `node_uid`.
      */
     fun `listGenerators`(): List<TrideGeneratorDescriptor>
-    
-    /**
-     * List all authored lights from `manifest.lights[]`.
-     * Byte-faithful with [`tride_runtime_api::RuntimeHandle::manifest`];
-     * empty for legacy `.trd` archives without lights. iOS hosts
-     * enumerate at load to build Filament light entities.
-     */
-    fun `listLights`(): List<TrideLightDescriptor>
     
     /**
      * Nodes drawn from a parametric datablock, in manifest order — linked
@@ -3500,24 +3466,6 @@ open class TrideScene: Disposable, AutoCloseable, TrideSceneInterface {
 
     
     /**
-     * List all authored cameras from `manifest.cameras[]`.
-     * Byte-faithful with [`tride_runtime_api::RuntimeHandle::manifest`];
-     * empty for legacy `.trd` archives without cameras. iOS hosts
-     * enumerate at load and drive `view->setCamera` on the active slug.
-     */override fun `listCameras`(): List<TrideCameraDescriptor> {
-            return FfiConverterSequenceTypeTrideCameraDescriptor.lift(
-    callWithPointer {
-    uniffiRustCall() { _status ->
-    UniffiLib.INSTANCE.uniffi_tride_ffi_fn_method_tridescene_list_cameras(
-        it, _status)
-}
-    }
-    )
-    }
-    
-
-    
-    /**
      * Uids of every node drawn bent now.
      */override fun `listDeformedNodes`(): List<kotlin.String> {
             return FfiConverterSequenceString.lift(
@@ -3540,24 +3488,6 @@ open class TrideScene: Disposable, AutoCloseable, TrideSceneInterface {
     callWithPointer {
     uniffiRustCall() { _status ->
     UniffiLib.INSTANCE.uniffi_tride_ffi_fn_method_tridescene_list_generators(
-        it, _status)
-}
-    }
-    )
-    }
-    
-
-    
-    /**
-     * List all authored lights from `manifest.lights[]`.
-     * Byte-faithful with [`tride_runtime_api::RuntimeHandle::manifest`];
-     * empty for legacy `.trd` archives without lights. iOS hosts
-     * enumerate at load to build Filament light entities.
-     */override fun `listLights`(): List<TrideLightDescriptor> {
-            return FfiConverterSequenceTypeTrideLightDescriptor.lift(
-    callWithPointer {
-    uniffiRustCall() { _status ->
-    UniffiLib.INSTANCE.uniffi_tride_ffi_fn_method_tridescene_list_lights(
         it, _status)
 }
     }
@@ -4728,150 +4658,6 @@ public object FfiConverterTypeTrideBuildInfo: FfiConverterRustBuffer<TrideBuildI
 
 
 /**
- * Authored camera descriptor returned by [`TrideScene::list_cameras`].
- *
- * Byte-faithful projection of one [`tride_schema::CameraNode`] from
- * `manifest.cameras[]`. Projection params are glTF-faithful: perspective
- * carries `yfov` (radians) + `aspect_ratio`, orthographic carries `xmag` /
- * `ymag`; the inactive set is `None`. `zfar = None` means an infinite far
- * plane. `rotation` is **Euler XYZ radians** — Euler→quat happens
- * in the iOS bridge, not here. Array fields mirror
- * [`TrideLightDescriptor`] (length-3 `Vec<f64>`, `Option` presence kept).
- */
-data class TrideCameraDescriptor (
-    /**
-     * Stable slug id (`manifest.cameras[].id`).
-     */
-    var `id`: kotlin.String, 
-    /**
-     * Stringified [`tride_schema::CameraKind`] (`"perspective" | "orthographic"`).
-     */
-    var `kind`: kotlin.String, 
-    /**
-     * Vertical field-of-view in radians (perspective only).
-     */
-    var `yfov`: kotlin.Double?, 
-    /**
-     * Fixed aspect ratio (perspective only). `None` = viewport-driven.
-     */
-    var `aspectRatio`: kotlin.Double?, 
-    /**
-     * Horizontal magnification half-size (orthographic only).
-     */
-    var `xmag`: kotlin.Double?, 
-    /**
-     * Vertical magnification half-size (orthographic only).
-     */
-    var `ymag`: kotlin.Double?, 
-    /**
-     * Near-plane distance (both projections).
-     */
-    var `znear`: kotlin.Double, 
-    /**
-     * Far-plane distance. `None` = infinite far plane.
-     */
-    var `zfar`: kotlin.Double?, 
-    /**
-     * Position, length-3 `[x, y, z]`, local to the node's parent — world when it has none. `None` = origin.
-     */
-    var `position`: List<kotlin.Double>?, 
-    /**
-     * Orientation as **Euler radians by axis**, length-3 `[ex, ey, ez]`, composed in
-     * [`Self::rotation_order`]. `None` = identity.
-     */
-    var `rotation`: List<kotlin.Double>?, 
-    /**
-     * The order `rotation`'s angles compose in: `"xyz"` (`Qx·Qy·Qz`, every camera saved before
-     * the field) or `"yxz"` (heading Y, pitch X, bank Z — a camera the editor or the importer
-     * creates). A host composing the pose itself must honour it.
-     */
-    var `rotationOrder`: kotlin.String, 
-    /**
-     * glTF node index this camera was imported from (export bake-back). `None` = editor-created.
-     */
-    var `gltfIndex`: kotlin.UInt?, 
-    /**
-     * Focus distance in metres along the view axis. `None` = Filament's default.
-     */
-    var `focusDistance`: kotlin.Double?, 
-    /**
-     * Aperture f-number — the depth-of-field blur only; the bridge keeps the
-     * exposure at f/16, 1/125 s, ISO 100. `None` = f/16.
-     */
-    var `aperture`: kotlin.Double?, 
-    /**
-     * Node uid kept in focus; overrides `focus_distance` while it resolves.
-     */
-    var `focusTarget`: kotlin.String?
-) {
-    
-    companion object
-}
-
-/**
- * @suppress
- */
-public object FfiConverterTypeTrideCameraDescriptor: FfiConverterRustBuffer<TrideCameraDescriptor> {
-    override fun read(buf: ByteBuffer): TrideCameraDescriptor {
-        return TrideCameraDescriptor(
-            FfiConverterString.read(buf),
-            FfiConverterString.read(buf),
-            FfiConverterOptionalDouble.read(buf),
-            FfiConverterOptionalDouble.read(buf),
-            FfiConverterOptionalDouble.read(buf),
-            FfiConverterOptionalDouble.read(buf),
-            FfiConverterDouble.read(buf),
-            FfiConverterOptionalDouble.read(buf),
-            FfiConverterOptionalSequenceDouble.read(buf),
-            FfiConverterOptionalSequenceDouble.read(buf),
-            FfiConverterString.read(buf),
-            FfiConverterOptionalUInt.read(buf),
-            FfiConverterOptionalDouble.read(buf),
-            FfiConverterOptionalDouble.read(buf),
-            FfiConverterOptionalString.read(buf),
-        )
-    }
-
-    override fun allocationSize(value: TrideCameraDescriptor) = (
-            FfiConverterString.allocationSize(value.`id`) +
-            FfiConverterString.allocationSize(value.`kind`) +
-            FfiConverterOptionalDouble.allocationSize(value.`yfov`) +
-            FfiConverterOptionalDouble.allocationSize(value.`aspectRatio`) +
-            FfiConverterOptionalDouble.allocationSize(value.`xmag`) +
-            FfiConverterOptionalDouble.allocationSize(value.`ymag`) +
-            FfiConverterDouble.allocationSize(value.`znear`) +
-            FfiConverterOptionalDouble.allocationSize(value.`zfar`) +
-            FfiConverterOptionalSequenceDouble.allocationSize(value.`position`) +
-            FfiConverterOptionalSequenceDouble.allocationSize(value.`rotation`) +
-            FfiConverterString.allocationSize(value.`rotationOrder`) +
-            FfiConverterOptionalUInt.allocationSize(value.`gltfIndex`) +
-            FfiConverterOptionalDouble.allocationSize(value.`focusDistance`) +
-            FfiConverterOptionalDouble.allocationSize(value.`aperture`) +
-            FfiConverterOptionalString.allocationSize(value.`focusTarget`)
-    )
-
-    override fun write(value: TrideCameraDescriptor, buf: ByteBuffer) {
-            FfiConverterString.write(value.`id`, buf)
-            FfiConverterString.write(value.`kind`, buf)
-            FfiConverterOptionalDouble.write(value.`yfov`, buf)
-            FfiConverterOptionalDouble.write(value.`aspectRatio`, buf)
-            FfiConverterOptionalDouble.write(value.`xmag`, buf)
-            FfiConverterOptionalDouble.write(value.`ymag`, buf)
-            FfiConverterDouble.write(value.`znear`, buf)
-            FfiConverterOptionalDouble.write(value.`zfar`, buf)
-            FfiConverterOptionalSequenceDouble.write(value.`position`, buf)
-            FfiConverterOptionalSequenceDouble.write(value.`rotation`, buf)
-            FfiConverterString.write(value.`rotationOrder`, buf)
-            FfiConverterOptionalUInt.write(value.`gltfIndex`, buf)
-            FfiConverterOptionalDouble.write(value.`focusDistance`, buf)
-            FfiConverterOptionalDouble.write(value.`aperture`, buf)
-            FfiConverterOptionalString.write(value.`focusTarget`, buf)
-    }
-}
-
-
-
-/**
  * One datablock decoded for module instancing (`TrideScene::datablock_mesh`).
  * Byte streams as in [`TrideGeneratedGeometry`] (LE `f32` / `u32`, one memcpy each).
  */
@@ -6015,124 +5801,6 @@ public object FfiConverterTypeTrideInputMapping: FfiConverterRustBuffer<TrideInp
             FfiConverterDouble.write(value.`fromHigh`, buf)
             FfiConverterDouble.write(value.`toLow`, buf)
             FfiConverterDouble.write(value.`toHigh`, buf)
-    }
-}
-
-
-
-/**
- * Authored light descriptor returned by [`TrideScene::list_lights`].
- *
- * Byte-faithful projection of one [`tride_schema::LightNode`] from
- * `manifest.lights[]` — every field copies the manifest value verbatim,
- * no lossy conversion. In particular `rotation` is **Euler XYZ-intrinsic
- * radians** `[ex, ey, ez]`; the iOS bridge
- * composes Euler→quat and rotates `-Z` for the emission direction
- * (the host's boundary), **not** here. `None` `position` / `rotation` mean
- * origin / identity (same semantics as the manifest `Option`).
- *
- * Array fields use length-3 `Vec<f64>` (matching the
- * [`TrideValue::Vec3`] neighbour) and keep the manifest's `Option`
- * presence so consumers can distinguish "unset" from "at origin".
- */
-data class TrideLightDescriptor (
-    /**
-     * Stable slug id (`manifest.lights[].id`).
-     */
-    var `id`: kotlin.String, 
-    /**
-     * Stringified [`tride_schema::LightType`] (`"directional" | "point" | "spot"`).
-     */
-    var `lightType`: kotlin.String, 
-    /**
-     * RGB linear color, length-3 `[r, g, b]`.
-     */
-    var `color`: List<kotlin.Double>, 
-    /**
-     * Illuminance (lux, directional) or luminous intensity (candela, point/spot).
-     */
-    var `intensity`: kotlin.Double, 
-    /**
-     * The radius a point / spot light reaches, metres — its own `range`, else the core's Auto
-     * from its intensity, `(intensity / 0.05)^¼`: what the host passes to `setFalloff`. `None`
-     * for a directional light.
-     */
-    var `range`: kotlin.Double?, 
-    /**
-     * Inner cone half-angle in radians (spot only).
-     */
-    var `innerConeAngle`: kotlin.Double?, 
-    /**
-     * Outer cone half-angle in radians (spot only).
-     */
-    var `outerConeAngle`: kotlin.Double?, 
-    /**
-     * Shadow caster flag; `None` = platform default (directional/spot cast, point does not).
-     */
-    var `castShadows`: kotlin.Boolean?, 
-    /**
-     * Position, length-3 `[x, y, z]`, local to the node's parent — world when it has none. `None` = origin.
-     */
-    var `position`: List<kotlin.Double>?, 
-    /**
-     * Orientation as **Euler XYZ radians**, length-3 `[ex, ey, ez]`. `None` = identity.
-     */
-    var `rotation`: List<kotlin.Double>?, 
-    /**
-     * glTF node index this light was imported from (export bake-back). `None` = editor-created.
-     */
-    var `gltfIndex`: kotlin.UInt?
-) {
-    
-    companion object
-}
-
-/**
- * @suppress
- */
-public object FfiConverterTypeTrideLightDescriptor: FfiConverterRustBuffer<TrideLightDescriptor> {
-    override fun read(buf: ByteBuffer): TrideLightDescriptor {
-        return TrideLightDescriptor(
-            FfiConverterString.read(buf),
-            FfiConverterString.read(buf),
-            FfiConverterSequenceDouble.read(buf),
-            FfiConverterDouble.read(buf),
-            FfiConverterOptionalDouble.read(buf),
-            FfiConverterOptionalDouble.read(buf),
-            FfiConverterOptionalDouble.read(buf),
-            FfiConverterOptionalBoolean.read(buf),
-            FfiConverterOptionalSequenceDouble.read(buf),
-            FfiConverterOptionalSequenceDouble.read(buf),
-            FfiConverterOptionalUInt.read(buf),
-        )
-    }
-
-    override fun allocationSize(value: TrideLightDescriptor) = (
-            FfiConverterString.allocationSize(value.`id`) +
-            FfiConverterString.allocationSize(value.`lightType`) +
-            FfiConverterSequenceDouble.allocationSize(value.`color`) +
-            FfiConverterDouble.allocationSize(value.`intensity`) +
-            FfiConverterOptionalDouble.allocationSize(value.`range`) +
-            FfiConverterOptionalDouble.allocationSize(value.`innerConeAngle`) +
-            FfiConverterOptionalDouble.allocationSize(value.`outerConeAngle`) +
-            FfiConverterOptionalBoolean.allocationSize(value.`castShadows`) +
-            FfiConverterOptionalSequenceDouble.allocationSize(value.`position`) +
-            FfiConverterOptionalSequenceDouble.allocationSize(value.`rotation`) +
-            FfiConverterOptionalUInt.allocationSize(value.`gltfIndex`)
-    )
-
-    override fun write(value: TrideLightDescriptor, buf: ByteBuffer) {
-            FfiConverterString.write(value.`id`, buf)
-            FfiConverterString.write(value.`lightType`, buf)
-            FfiConverterSequenceDouble.write(value.`color`, buf)
-            FfiConverterDouble.write(value.`intensity`, buf)
-            FfiConverterOptionalDouble.write(value.`range`, buf)
-            FfiConverterOptionalDouble.write(value.`innerConeAngle`, buf)
-            FfiConverterOptionalDouble.write(value.`outerConeAngle`, buf)
-            FfiConverterOptionalBoolean.write(value.`castShadows`, buf)
-            FfiConverterOptionalSequenceDouble.write(value.`position`, buf)
-            FfiConverterOptionalSequenceDouble.write(value.`rotation`, buf)
-            FfiConverterOptionalUInt.write(value.`gltfIndex`, buf)
     }
 }
 
@@ -7312,24 +6980,21 @@ public object FfiConverterTypeTridePulseTable: FfiConverterRustBuffer<TridePulse
 
 
 /**
- * One camera of [`TrideSceneRecord`]: parameters as [`TrideCameraDescriptor`], its parent and
- * focus rows, the pose as a quaternion from the core (its rotation order composed).
+ * One camera of [`TrideSceneRecord`]: the lens as drawn (`aspect_ratio` `None` = the view's) and
+ * its focus row. Its place is the node row naming it ([`TrideRecordNode::camera`]).
  */
 data class TrideRecordCamera (
     var `id`: kotlin.String, 
     var `kind`: kotlin.String, 
-    var `yfov`: kotlin.Double?, 
+    var `yfov`: kotlin.Double, 
     var `aspectRatio`: kotlin.Double?, 
-    var `xmag`: kotlin.Double?, 
-    var `ymag`: kotlin.Double?, 
+    var `xmag`: kotlin.Double, 
+    var `ymag`: kotlin.Double, 
     var `znear`: kotlin.Double, 
-    var `zfar`: kotlin.Double?, 
-    var `focusDistance`: kotlin.Double?, 
-    var `aperture`: kotlin.Double?, 
-    var `focusTarget`: kotlin.UInt?, 
-    var `parent`: kotlin.UInt?, 
-    var `translation`: List<kotlin.Double>, 
-    var `rotation`: List<kotlin.Double>
+    var `zfar`: kotlin.Double, 
+    var `focusDistance`: kotlin.Double, 
+    var `aperture`: kotlin.Double, 
+    var `focusTarget`: kotlin.UInt?
 ) {
     
     companion object
@@ -7343,53 +7008,44 @@ public object FfiConverterTypeTrideRecordCamera: FfiConverterRustBuffer<TrideRec
         return TrideRecordCamera(
             FfiConverterString.read(buf),
             FfiConverterString.read(buf),
-            FfiConverterOptionalDouble.read(buf),
-            FfiConverterOptionalDouble.read(buf),
-            FfiConverterOptionalDouble.read(buf),
-            FfiConverterOptionalDouble.read(buf),
             FfiConverterDouble.read(buf),
             FfiConverterOptionalDouble.read(buf),
-            FfiConverterOptionalDouble.read(buf),
-            FfiConverterOptionalDouble.read(buf),
+            FfiConverterDouble.read(buf),
+            FfiConverterDouble.read(buf),
+            FfiConverterDouble.read(buf),
+            FfiConverterDouble.read(buf),
+            FfiConverterDouble.read(buf),
+            FfiConverterDouble.read(buf),
             FfiConverterOptionalUInt.read(buf),
-            FfiConverterOptionalUInt.read(buf),
-            FfiConverterSequenceDouble.read(buf),
-            FfiConverterSequenceDouble.read(buf),
         )
     }
 
     override fun allocationSize(value: TrideRecordCamera) = (
             FfiConverterString.allocationSize(value.`id`) +
             FfiConverterString.allocationSize(value.`kind`) +
-            FfiConverterOptionalDouble.allocationSize(value.`yfov`) +
+            FfiConverterDouble.allocationSize(value.`yfov`) +
             FfiConverterOptionalDouble.allocationSize(value.`aspectRatio`) +
-            FfiConverterOptionalDouble.allocationSize(value.`xmag`) +
-            FfiConverterOptionalDouble.allocationSize(value.`ymag`) +
+            FfiConverterDouble.allocationSize(value.`xmag`) +
+            FfiConverterDouble.allocationSize(value.`ymag`) +
             FfiConverterDouble.allocationSize(value.`znear`) +
-            FfiConverterOptionalDouble.allocationSize(value.`zfar`) +
-            FfiConverterOptionalDouble.allocationSize(value.`focusDistance`) +
-            FfiConverterOptionalDouble.allocationSize(value.`aperture`) +
-            FfiConverterOptionalUInt.allocationSize(value.`focusTarget`) +
-            FfiConverterOptionalUInt.allocationSize(value.`parent`) +
-            FfiConverterSequenceDouble.allocationSize(value.`translation`) +
-            FfiConverterSequenceDouble.allocationSize(value.`rotation`)
+            FfiConverterDouble.allocationSize(value.`zfar`) +
+            FfiConverterDouble.allocationSize(value.`focusDistance`) +
+            FfiConverterDouble.allocationSize(value.`aperture`) +
+            FfiConverterOptionalUInt.allocationSize(value.`focusTarget`)
     )
 
     override fun write(value: TrideRecordCamera, buf: ByteBuffer) {
             FfiConverterString.write(value.`id`, buf)
             FfiConverterString.write(value.`kind`, buf)
-            FfiConverterOptionalDouble.write(value.`yfov`, buf)
+            FfiConverterDouble.write(value.`yfov`, buf)
             FfiConverterOptionalDouble.write(value.`aspectRatio`, buf)
-            FfiConverterOptionalDouble.write(value.`xmag`, buf)
-            FfiConverterOptionalDouble.write(value.`ymag`, buf)
+            FfiConverterDouble.write(value.`xmag`, buf)
+            FfiConverterDouble.write(value.`ymag`, buf)
             FfiConverterDouble.write(value.`znear`, buf)
-            FfiConverterOptionalDouble.write(value.`zfar`, buf)
-            FfiConverterOptionalDouble.write(value.`focusDistance`, buf)
-            FfiConverterOptionalDouble.write(value.`aperture`, buf)
+            FfiConverterDouble.write(value.`zfar`, buf)
+            FfiConverterDouble.write(value.`focusDistance`, buf)
+            FfiConverterDouble.write(value.`aperture`, buf)
             FfiConverterOptionalUInt.write(value.`focusTarget`, buf)
-            FfiConverterOptionalUInt.write(value.`parent`, buf)
-            FfiConverterSequenceDouble.write(value.`translation`, buf)
-            FfiConverterSequenceDouble.write(value.`rotation`, buf)
     }
 }
 
@@ -7480,21 +7136,19 @@ public object FfiConverterTypeTrideRecordImage: FfiConverterRustBuffer<TrideReco
 
 
 /**
- * One light of [`TrideSceneRecord`]: parameters as [`TrideLightDescriptor`], its parent row,
- * the pose as a quaternion from the core.
+ * One light of [`TrideSceneRecord`]: parameters as drawn (the core fills what the file leaves
+ * out; `range` 0 for a directional light). Its place is the node row naming it
+ * ([`TrideRecordNode::light`]).
  */
 data class TrideRecordLight (
     var `id`: kotlin.String, 
     var `lightType`: kotlin.String, 
     var `color`: List<kotlin.Double>, 
     var `intensity`: kotlin.Double, 
-    var `range`: kotlin.Double?, 
-    var `innerConeAngle`: kotlin.Double?, 
-    var `outerConeAngle`: kotlin.Double?, 
-    var `castShadows`: kotlin.Boolean?, 
-    var `parent`: kotlin.UInt?, 
-    var `translation`: List<kotlin.Double>, 
-    var `rotation`: List<kotlin.Double>
+    var `range`: kotlin.Double, 
+    var `innerConeAngle`: kotlin.Double, 
+    var `outerConeAngle`: kotlin.Double, 
+    var `castShadows`: kotlin.Boolean
 ) {
     
     companion object
@@ -7510,13 +7164,10 @@ public object FfiConverterTypeTrideRecordLight: FfiConverterRustBuffer<TrideReco
             FfiConverterString.read(buf),
             FfiConverterSequenceDouble.read(buf),
             FfiConverterDouble.read(buf),
-            FfiConverterOptionalDouble.read(buf),
-            FfiConverterOptionalDouble.read(buf),
-            FfiConverterOptionalDouble.read(buf),
-            FfiConverterOptionalBoolean.read(buf),
-            FfiConverterOptionalUInt.read(buf),
-            FfiConverterSequenceDouble.read(buf),
-            FfiConverterSequenceDouble.read(buf),
+            FfiConverterDouble.read(buf),
+            FfiConverterDouble.read(buf),
+            FfiConverterDouble.read(buf),
+            FfiConverterBoolean.read(buf),
         )
     }
 
@@ -7525,13 +7176,10 @@ public object FfiConverterTypeTrideRecordLight: FfiConverterRustBuffer<TrideReco
             FfiConverterString.allocationSize(value.`lightType`) +
             FfiConverterSequenceDouble.allocationSize(value.`color`) +
             FfiConverterDouble.allocationSize(value.`intensity`) +
-            FfiConverterOptionalDouble.allocationSize(value.`range`) +
-            FfiConverterOptionalDouble.allocationSize(value.`innerConeAngle`) +
-            FfiConverterOptionalDouble.allocationSize(value.`outerConeAngle`) +
-            FfiConverterOptionalBoolean.allocationSize(value.`castShadows`) +
-            FfiConverterOptionalUInt.allocationSize(value.`parent`) +
-            FfiConverterSequenceDouble.allocationSize(value.`translation`) +
-            FfiConverterSequenceDouble.allocationSize(value.`rotation`)
+            FfiConverterDouble.allocationSize(value.`range`) +
+            FfiConverterDouble.allocationSize(value.`innerConeAngle`) +
+            FfiConverterDouble.allocationSize(value.`outerConeAngle`) +
+            FfiConverterBoolean.allocationSize(value.`castShadows`)
     )
 
     override fun write(value: TrideRecordLight, buf: ByteBuffer) {
@@ -7539,13 +7187,10 @@ public object FfiConverterTypeTrideRecordLight: FfiConverterRustBuffer<TrideReco
             FfiConverterString.write(value.`lightType`, buf)
             FfiConverterSequenceDouble.write(value.`color`, buf)
             FfiConverterDouble.write(value.`intensity`, buf)
-            FfiConverterOptionalDouble.write(value.`range`, buf)
-            FfiConverterOptionalDouble.write(value.`innerConeAngle`, buf)
-            FfiConverterOptionalDouble.write(value.`outerConeAngle`, buf)
-            FfiConverterOptionalBoolean.write(value.`castShadows`, buf)
-            FfiConverterOptionalUInt.write(value.`parent`, buf)
-            FfiConverterSequenceDouble.write(value.`translation`, buf)
-            FfiConverterSequenceDouble.write(value.`rotation`, buf)
+            FfiConverterDouble.write(value.`range`, buf)
+            FfiConverterDouble.write(value.`innerConeAngle`, buf)
+            FfiConverterDouble.write(value.`outerConeAngle`, buf)
+            FfiConverterBoolean.write(value.`castShadows`, buf)
     }
 }
 
@@ -7709,7 +7354,15 @@ data class TrideRecordNode (
     /**
      * The generator it hosts (slug).
      */
-    var `generator`: kotlin.String?
+    var `generator`: kotlin.String?, 
+    /**
+     * The light it holds (slug, [`TrideRecordLight::id`]).
+     */
+    var `light`: kotlin.String?, 
+    /**
+     * The camera it holds (slug, [`TrideRecordCamera::id`]).
+     */
+    var `camera`: kotlin.String?
 ) {
     
     companion object
@@ -7734,6 +7387,8 @@ public object FfiConverterTypeTrideRecordNode: FfiConverterRustBuffer<TrideRecor
             FfiConverterOptionalUInt.read(buf),
             FfiConverterSequenceDouble.read(buf),
             FfiConverterOptionalString.read(buf),
+            FfiConverterOptionalString.read(buf),
+            FfiConverterOptionalString.read(buf),
         )
     }
 
@@ -7750,7 +7405,9 @@ public object FfiConverterTypeTrideRecordNode: FfiConverterRustBuffer<TrideRecor
             FfiConverterOptionalString.allocationSize(value.`datablock`) +
             FfiConverterOptionalUInt.allocationSize(value.`skin`) +
             FfiConverterSequenceDouble.allocationSize(value.`weights`) +
-            FfiConverterOptionalString.allocationSize(value.`generator`)
+            FfiConverterOptionalString.allocationSize(value.`generator`) +
+            FfiConverterOptionalString.allocationSize(value.`light`) +
+            FfiConverterOptionalString.allocationSize(value.`camera`)
     )
 
     override fun write(value: TrideRecordNode, buf: ByteBuffer) {
@@ -7767,6 +7424,8 @@ public object FfiConverterTypeTrideRecordNode: FfiConverterRustBuffer<TrideRecor
             FfiConverterOptionalUInt.write(value.`skin`, buf)
             FfiConverterSequenceDouble.write(value.`weights`, buf)
             FfiConverterOptionalString.write(value.`generator`, buf)
+            FfiConverterOptionalString.write(value.`light`, buf)
+            FfiConverterOptionalString.write(value.`camera`, buf)
     }
 }
 
@@ -11263,34 +10922,6 @@ public object FfiConverterSequenceTypeTrideBoundInput: FfiConverterRustBuffer<Li
 /**
  * @suppress
  */
-public object FfiConverterSequenceTypeTrideCameraDescriptor: FfiConverterRustBuffer<List<TrideCameraDescriptor>> {
-    override fun read(buf: ByteBuffer): List<TrideCameraDescriptor> {
-        val len = buf.getInt()
-        return List<TrideCameraDescriptor>(len) {
-            FfiConverterTypeTrideCameraDescriptor.read(buf)
-        }
-    }
-
-    override fun allocationSize(value: List<TrideCameraDescriptor>): ULong {
-        val sizeForLength = 4UL
-        val sizeForItems = value.map { FfiConverterTypeTrideCameraDescriptor.allocationSize(it) }.sum()
-        return sizeForLength + sizeForItems
-    }
-
-    override fun write(value: List<TrideCameraDescriptor>, buf: ByteBuffer) {
-        buf.putInt(value.size)
-        value.iterator().forEach {
-            FfiConverterTypeTrideCameraDescriptor.write(it, buf)
-        }
-    }
-}
-
-
-
-
-/**
- * @suppress
- */
 public object FfiConverterSequenceTypeTrideDatablockPart: FfiConverterRustBuffer<List<TrideDatablockPart>> {
     override fun read(buf: ByteBuffer): List<TrideDatablockPart> {
         val len = buf.getInt()
@@ -11365,34 +10996,6 @@ public object FfiConverterSequenceTypeTrideGeometryGroup: FfiConverterRustBuffer
         buf.putInt(value.size)
         value.iterator().forEach {
             FfiConverterTypeTrideGeometryGroup.write(it, buf)
-        }
-    }
-}
-
-
-
-
-/**
- * @suppress
- */
-public object FfiConverterSequenceTypeTrideLightDescriptor: FfiConverterRustBuffer<List<TrideLightDescriptor>> {
-    override fun read(buf: ByteBuffer): List<TrideLightDescriptor> {
-        val len = buf.getInt()
-        return List<TrideLightDescriptor>(len) {
-            FfiConverterTypeTrideLightDescriptor.read(buf)
-        }
-    }
-
-    override fun allocationSize(value: List<TrideLightDescriptor>): ULong {
-        val sizeForLength = 4UL
-        val sizeForItems = value.map { FfiConverterTypeTrideLightDescriptor.allocationSize(it) }.sum()
-        return sizeForLength + sizeForItems
-    }
-
-    override fun write(value: List<TrideLightDescriptor>, buf: ByteBuffer) {
-        buf.putInt(value.size)
-        value.iterator().forEach {
-            FfiConverterTypeTrideLightDescriptor.write(it, buf)
         }
     }
 }
@@ -12127,9 +11730,8 @@ public object FfiConverterMapStringTypeTrideValue: FfiConverterRustBuffer<Map<ko
         /**
          * Unit quaternion `[x, y, z, w]` of Euler angles `euler` (radians, by axis `[x, y, z]`)
          * composed in `order` (`"xyz"` / `"yxz"`) — the core's one composition
-         * (`tride_schema::euler_to_quat`, `libm`), for a host placing a camera from its descriptor and
-         * its per-axis lanes in the camera's [`TrideCameraDescriptor::rotation_order`] instead of a
-         * composition of its own. An unknown order or a `euler` that is not 3 numbers gives an empty
+         * (`tride_schema::euler_to_quat`, `libm`), for a host composing a node's per-axis lanes in the
+         * node's order instead of a composition of its own. An unknown order or a `euler` that is not 3 numbers gives an empty
          * list — a host bug, never a silent guess.
          */ fun `eulerToQuat`(`euler`: List<kotlin.Double>, `order`: kotlin.String): List<kotlin.Double> {
             return FfiConverterSequenceDouble.lift(

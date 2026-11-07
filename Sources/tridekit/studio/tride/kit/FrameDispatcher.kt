@@ -21,6 +21,8 @@
  *     from an older scene, Euler (3); a part of it (an Euler lane, a raw component) is a problem — no
  *     axis is composed here. First match wins; an unmatched pointer is a problem, never a silent drop.
  *   - `/scene/active_camera` is a hard cut of the view's camera.
+ *   - A light / camera is posed by its node's lanes: a pose lane on the record (`/lights/{id}/translation…`)
+ *     has no route, a problem like any unmatched pointer; a camera's lens leaves are numbers.
  *   - `/materialOverrides/{slug}/…` lands in the material stream with its slug — the host recolours the
  *     look from the runtime (`materialParams(slug)`), a node material's inputs (`…/nodes/{node}/inputs/…`,
  *     `isGraphLeaf`: its uniforms only) included; `/materials/{i}/…` by index is a stream too (not applied on Android; warned once).
@@ -199,38 +201,10 @@ internal object PointerDispatch {
         return ok(CanonicalMutation.Light(LightMutation(lightId, property, null, v)))
     }
 
-    private fun buildLightTransform(lightId: String, channel: String, component: String?, value: Any?): Dispatch {
-        val property = if (channel == "rotation") "rotation" else "position"
-        if (component != null) {
-            val lane = AXIS_LANE[component] ?: return fail(FailReason.UNMATCHED, lightId, "light transform lane '$component'")
-            val n = number(value) ?: return fail(FailReason.VALUE_SHAPE, lightId, "light transform component expects number")
-            return ok(CanonicalMutation.Light(LightMutation(lightId, property, lane, n)))
-        }
-        val v = scalarOrArray(value) ?: return fail(FailReason.VALUE_SHAPE, lightId, "light transform value expects number or array")
-        if (property == "rotation" && v is DoubleArray && v.size != 3) return fail(FailReason.VALUE_SHAPE, lightId, STORED_ANGLES)
-        return ok(CanonicalMutation.Light(LightMutation(lightId, property, null, v)))
+    private fun buildCamera(cameraId: String, property: String, value: Any?, pointer: String): Dispatch {
+        val n = number(value) ?: return fail(FailReason.VALUE_SHAPE, pointer, "camera '$property' expects a number")
+        return ok(CanonicalMutation.Camera(CameraMutation(cameraId, property, null, n)))
     }
-
-    private fun buildCamera(cameraId: String, property: String, component: String?, value: Any?, pointer: String): Dispatch {
-        val prop = if (property == "translation") "position" else property
-        if (component != null) {
-            if (prop != "position" && prop != "rotation") return fail(FailReason.UNMATCHED, pointer, "camera '$prop' has no per-axis lane")
-            val lane = AXIS_LANE[component] ?: return fail(FailReason.UNMATCHED, pointer, "camera lane '$component'")
-            val n = number(value) ?: return fail(FailReason.VALUE_SHAPE, pointer, "camera component expects number")
-            return ok(CanonicalMutation.Camera(CameraMutation(cameraId, prop, lane, n)))
-        }
-        val v = scalarOrArray(value) ?: return fail(FailReason.VALUE_SHAPE, pointer, "camera value expects number or array")
-        if (prop == "rotation" && v is DoubleArray && v.size != 3) return fail(FailReason.VALUE_SHAPE, pointer, STORED_ANGLES)
-        return ok(CanonicalMutation.Camera(CameraMutation(cameraId, prop, null, v)))
-    }
-
-    /**
-     * A light's / camera's whole rotation is the record's Euler angles `[x, y, z]` (radians, the record's
-     * order): the core turns a quaternion into them. Any other length is refused — the pose hold would read
-     * a quaternion's first three numbers as angles.
-     */
-    private const val STORED_ANGLES =
-        "whole rotation expects the stored Euler angles [x, y, z] (radians); a quaternion is converted by the core"
 
     /**
      * An RGB write: `[r, g, b(, a)]` whole (alpha dropped) or one lane `r|g|b|0..2`. [then] gets the lane
@@ -318,11 +292,8 @@ internal object PointerDispatch {
         Route(Regex("^/lights/([^/]+)/color(?:[./]([0-2rgb]))?$")) { m, v, _, _ ->
             buildLight(m.groupValues[1], "color", m.opt(2), v)
         },
-        Route(Regex("^/lights/([^/]+)/(translation|position|rotation)(?:[./]([0-2xyz]))?$")) { m, v, _, _ ->
-            buildLightTransform(m.groupValues[1], m.groupValues[2], m.opt(3), v)
-        },
-        Route(Regex("^/cameras/([^/]+)/(position|translation|rotation|yfov|znear|zfar|focusDistance|aperture)(?:[./]([0-2xyz]))?$")) { m, v, _, p ->
-            buildCamera(m.groupValues[1], m.groupValues[2], m.opt(3), v, p)
+        Route(Regex("^/cameras/([^/]+)/(yfov|znear|zfar|focusDistance|aperture)$")) { m, v, _, p ->
+            buildCamera(m.groupValues[1], m.groupValues[2], v, p)
         },
         Route(Regex("^/environment_settings/(rotation|intensity|background_color)(?:[./]([0-2xyzrgb]))?$")) { m, v, _, p ->
             buildEnvironment(m.groupValues[1], m.opt(2), v, p)

@@ -19,18 +19,19 @@
  *
  *   - `partialDrawNotice` — why the scene is drawn only in part (`null` = whole); the same text goes once to
  *     [onDiagnostic] (`RUNTIME`, subject `partialDraw`).
- *   - Checks (opt-in `TrideKitChecks`): `nodeWorlds()` — the world matrix of every node, light and camera the view
- *     draws, by node uid and light / camera id; `bonePaletteCheck()` — the core's palettes against gltfio's rule.
+ *   - Checks (opt-in `TrideKitChecks`): `nodeWorlds()` — the world matrix of every node the view draws (a light
+ *     or a camera is its node), by node uid; `bonePaletteCheck()` — the core's palettes against gltfio's rule.
  *
  * Non-obvious constraints:
  *   - The manifest is never parsed here. A view builds the scene from the core's scene record (`RecordScene`):
- *     one place per node row and per light / camera carrier, the rest pose as a quaternion; the core says each
+ *     one place per node row, the rest pose as a quaternion; the core says each
  *     node's visibility to the renderer (`/node/{uid}/drawVisible`), and every node with a datablock draws the
  *     core's mesh: a file mesh as gltfio draws its primitives, in the record's materials (one ubershader
  *     instance per slug and key), a procedural one in the core's look. A scene the core hands no record of is
  *     not built: the attach throws `IllegalStateException("scene not built: …")`.
- *   - Lights / cameras hold their pose between changed-only frames (`PoseHold`); one on a carrier node is
- *     posed on the carrier's TRS (the node path meshes use), its component at identity.
+ *   - A light / camera is the node row that names it: built from the record's resolved values on its
+ *     node's place, posed and hidden by the node's lanes like any node (a hidden node's light goes dark); live
+ *     parameters arrive resolved and paired from the core, nothing is held here.
  *   - Generators (`listGenerators`) and the record's datablock nodes are listed at attach and drawn from the
  *     runtime's meshes; a node a deformer bends (`listDeformedNodes`, `/deformed/`) draws the runtime's bent
  *     mesh the same way; a trunk is pulled again only when its `trunkEpoch` moved. Module
@@ -70,7 +71,6 @@ import kotlinx.coroutines.withContext
 import org.json.JSONArray
 import org.json.JSONObject
 import studio.tride.core.EvalDiagnostic
-import studio.tride.core.TrideCameraDescriptor
 import studio.tride.core.TrideBonePalette
 import studio.tride.core.TrideDatablockMesh
 import studio.tride.core.TrideBoundInput
@@ -81,7 +81,6 @@ import studio.tride.core.TrideInputMapping
 import studio.tride.core.TrideInputSource
 import studio.tride.core.TrideLayerStateChangeListener
 import studio.tride.core.TrideMaterialGraphProblem
-import studio.tride.core.TrideLightDescriptor
 import studio.tride.core.TrideMaterialParams
 import studio.tride.core.TrideModuleBindingDescriptor
 import studio.tride.core.TrideMutation
@@ -95,7 +94,6 @@ import studio.tride.core.TrideScene
 import studio.tride.core.TrideSceneRecord
 import studio.tride.core.TrideStateChange
 import studio.tride.core.TrideValue
-import studio.tride.core.eulerToQuat
 import studio.tride.core.materialObjectSeed
 import studio.tride.core.materialPackageInfo
 import studio.tride.kit.record.RecordScene
@@ -339,17 +337,12 @@ public class TrideKitScene(trdBytes: ByteArray) : AutoCloseable {
     private class Baseline(val position: DoubleArray, val rotation: DoubleArray, val scale: DoubleArray)
     private val nodeIdToIndex = HashMap<String, Int>()
     private val baselines = HashMap<String, Baseline>()
-    private val carrierIndexById = HashMap<String, Int>()
-    private val lightDescriptors = HashMap<String, TrideLightDescriptor>()
-    private val cameraDescriptors = HashMap<String, TrideCameraDescriptor>()
     private var environmentBaseEuler = doubleArrayOf(0.0, 0.0, 0.0)
     private var environmentBaseBackground = doubleArrayOf(0.07, 0.07, 0.07)
     /** The host's render knobs (a copy: the record's fields are mutable); `null` = none. */
     private var knobs: TrideRenderOverrides? = null
     /** Saturation, fog colour and bloom strength as the frames wrote them over the authored settings. */
     private var liveRender = LiveRenderLeaves(doubleArrayOf(0.0, 0.0, 0.0))
-    /** The pose every light and camera holds between the runtime's changed-only frames. */
-    private var poses = PoseHold(emptyMap())
 
     // ---- generators ----
     private val generatorHostIndex = HashMap<String, Int>()
@@ -861,9 +854,6 @@ public class TrideKitScene(trdBytes: ByteArray) : AutoCloseable {
     public fun reset() {
         checkOpenOnMain()
         core.reset()
-        // Every light and camera back to its authored pose; the whole frame then moves what is driven.
-        val moved = poses.reset()
-        bridge?.let { b -> for (key in moved) writePose(key, b) }
         // The runtime forgot what it handed out: this frame is whole.
         tickAndDispatch(0f, complete = true)
     }
@@ -953,8 +943,6 @@ public class TrideKitScene(trdBytes: ByteArray) : AutoCloseable {
         loadByRecord(record, bridge)
         materializeLights(bridge)
         materializeCameras(bridge)
-        // A new view's carriers show the authored poses; a full frame brings the held ones back.
-        holdPoses()
         bridge.setActiveCamera(core.activeCamera())
         // Node materials load before any mesh wears them.
         materializeMaterialGraphs(bridge, assets)
@@ -973,12 +961,12 @@ public class TrideKitScene(trdBytes: ByteArray) : AutoCloseable {
         // The first frame: whatever the first tick moved, environment and settings included.
         tickAndDispatch(0f)
         bridge.needsRender = true
-        Log.i(TAG, "attached: nodes=${nodeIdToIndex.size} lights=${lightDescriptors.size} cameras=${cameraDescriptors.size} carriers=${carrierIndexById.size} activeCamera=${core.activeCamera() ?: "-"}")
+        Log.i(TAG, "attached: nodes=${nodeIdToIndex.size} lights=${record.lights.size} cameras=${record.cameras.size} activeCamera=${core.activeCamera() ?: "-"}")
     }
 
     /**
-     * The scene built from the core's [record] — one place per node row and per light / camera carrier
-     * ([RecordScene]); a row's number is its node index. The core says each node's visibility to the renderer.
+     * The scene built from the core's [record] — one place per node row ([RecordScene]); a row's number is its node
+     * index. The core says each node's visibility to the renderer.
      * A `requires` Android does not draw is said once (`partialDraw`).
      */
     private fun loadByRecord(record: TrideSceneRecord, bridge: FilamentSceneBridge) {
@@ -986,16 +974,12 @@ public class TrideKitScene(trdBytes: ByteArray) : AutoCloseable {
         lastBonePalettes.clear()
         partialDrawNotice = null
         bridge.loadPlaces(built.places)
-        nodeIdToIndex.clear(); baselines.clear(); carrierIndexById.clear(); drawVisible.clear()
+        nodeIdToIndex.clear(); baselines.clear(); drawVisible.clear()
         for ((row, uid) in built.uidAt.withIndex()) {
             nodeIdToIndex[uid] = row
             val place = built.places[row]
             baselines[uid] = Baseline(place.translation, place.rotation, place.scale)
             drawVisible[row] = built.visibleAt[row]
-        }
-        for ((id, place) in built.carrierPlace) {
-            carrierIndexById[id] = place
-            nodeIdToIndex[id] = place
         }
         recordScene = built
         for (notice in built.notices) reportLoad("record", notice)
@@ -1008,8 +992,8 @@ public class TrideKitScene(trdBytes: ByteArray) : AutoCloseable {
     }
 
     /**
-     * The world matrix (16 numbers, column-major) of every node, light and camera the attached view draws, as its
-     * TransformManager composes it, by node uid and light / camera id; one the view has no entity for is left out.
+     * The world matrix (16 numbers, column-major) of every node the attached view draws (a light or a camera is its
+     * node), as its TransformManager composes it, by node uid; one the view has no entity for is left out.
      * Empty without a view. For checks: the drawn worlds against the core's node table (the parity gate).
      */
     @TrideKitChecks
@@ -1062,42 +1046,27 @@ public class TrideKitScene(trdBytes: ByteArray) : AutoCloseable {
         return BonePaletteCheck.measure(lastBonePalettes.values, built.skins, partJoints) { b.worldTransform(it) }
     }
 
-    /** The scene's light ids, as listed at the last attach (checks). */
-    internal fun lightIds(): Set<String> = lightDescriptors.keys.toSet()
-
-    /** The place the view drew light / camera [id]'s carrier at (checks). */
-    internal fun carrierIndex(id: String): Int? = carrierIndexById[id]
-
-    private fun lightForwardDirection(euler: List<Double>?): DoubleArray {
-        val forward = doubleArrayOf(0.0, 0.0, -1.0)
-        if (euler == null || euler.size < 3) return forward
-        return TrideMath.rotateByQuat(CoreRotation.quatOfEulerXYZ(doubleArrayOf(euler[0], euler[1], euler[2])), forward)
-    }
-
+    /** Each light of the record on its node's place, its values the core's */
     private fun materializeLights(bridge: FilamentSceneBridge) {
-        val lights = core.listLights()
-        lightDescriptors.clear()
-        for (l in lights) lightDescriptors.putIfAbsent(l.id, l)
-        bridge.addLights(lights.map { l ->
+        val built = recordScene ?: return
+        bridge.addLights(built.lights.map { (l, row) ->
             LightSpec(
                 id = l.id, type = l.lightType,
                 color = doubleArrayOf(l.color.getOrElse(0) { 1.0 }, l.color.getOrElse(1) { 1.0 }, l.color.getOrElse(2) { 1.0 }),
                 intensity = l.intensity, range = l.range, innerConeAngle = l.innerConeAngle, outerConeAngle = l.outerConeAngle,
-                castShadows = l.castShadows, position = l.position?.toDoubleArray(), direction = lightForwardDirection(l.rotation),
-                carrierPlace = carrierIndexById[l.id],
+                castShadows = l.castShadows, place = row,
             )
         })
     }
 
+    /** Each camera of the record following its node's place, its lens the core's */
     private fun materializeCameras(bridge: FilamentSceneBridge) {
-        val cams = core.listCameras()
-        cameraDescriptors.clear()
-        for (c in cams) cameraDescriptors.putIfAbsent(c.id, c)
-        bridge.addCameras(cams.map { c ->
+        val built = recordScene ?: return
+        bridge.addCameras(built.cameras.map { (c, row) ->
             CameraSpec(
                 id = c.id, perspective = c.kind != "orthographic", yfov = c.yfov, xmag = c.xmag, ymag = c.ymag,
                 znear = c.znear, zfar = c.zfar, focusDistance = c.focusDistance, aperture = c.aperture,
-                carrierPlace = carrierIndexById[c.id], focusTargetPlace = c.focusTarget?.let { nodeIdToIndex[it] },
+                place = row, focusTargetPlace = c.focusTarget?.toInt(),
             )
         })
     }
@@ -1507,51 +1476,6 @@ public class TrideKitScene(trdBytes: ByteArray) : AutoCloseable {
         else -> null
     }
 
-    private fun lightPose(id: String) = "/lights/$id"
-    private fun cameraPose(id: String) = "/cameras/$id"
-
-    /** The held pose of every light and camera, from the authored records — what a new view's carriers show. */
-    private fun holdPoses() {
-        val records = HashMap<String, Pose>()
-        fun pose(position: List<Double>?, rotation: List<Double>?, order: String) = Pose(
-            doubleArrayOf(position?.getOrNull(0) ?: 0.0, position?.getOrNull(1) ?: 0.0, position?.getOrNull(2) ?: 0.0),
-            doubleArrayOf(rotation?.getOrNull(0) ?: 0.0, rotation?.getOrNull(1) ?: 0.0, rotation?.getOrNull(2) ?: 0.0),
-            order,
-        )
-        for ((id, d) in lightDescriptors) records[lightPose(id)] = pose(d.position, d.rotation, LIGHT_ROTATION_ORDER)
-        for ((id, d) in cameraDescriptors) records[cameraPose(id)] = pose(d.position, d.rotation, d.rotationOrder)
-        poses = PoseHold(records)
-    }
-
-    /** A held pose to the view: on the carrier node, else on a light itself (a camera without one cannot move). */
-    private fun writePose(key: String, bridge: FilamentSceneBridge) {
-        val pose = poses.pose(key) ?: return
-        val light = key.startsWith("/lights/")
-        val id = key.substringAfter(if (light) "/lights/" else "/cameras/")
-        val carrier = carrierIndexById[id]
-        when {
-            carrier != null -> bridge.setNodeTRS(carrier, pose.position, carrierRotation(id, pose), null)
-            light -> {
-                bridge.setLightPosition(id, pose.position)
-                bridge.setLightDirection(id, lightForwardDirection(pose.euler.toList()))
-            }
-            else -> warnOnce(TrideKitDiagnosticKind.POINTER, id, "camera '$id' has no carrier place in the scene record — its pose cannot move")
-        }
-    }
-
-    /**
-     * The quaternion `[x, y, z, w]` of a held pose's angles in its record's order — the core's one
-     * composition (`eulerToQuat`, the same its own camera pose and `pick` use), so any order the core
-     * knows places the carrier alike on every host. `null` keeps the carrier's rotation: an order this
-     * core does not know (a host built against another core).
-     */
-    private fun carrierRotation(id: String, pose: Pose): DoubleArray? {
-        val q = eulerToQuat(pose.euler.toList(), pose.order)
-        if (q.size == 4) return q.toDoubleArray()
-        warnOnce(TrideKitDiagnosticKind.POINTER, "$id/rotationOrder", "'$id': rotation order '${pose.order}' is unknown to the core — the rotation is not applied")
-        return null
-    }
-
     private fun dispatch(mutations: List<TrideMutation>, bridge: FilamentSceneBridge, complete: Boolean = false) {
         val routed = routeMutations(mutations.map { PointerMutation(it.pointer, decode(it)) }, resolver)
         for (p in routed.problems) warnOnce(TrideKitDiagnosticKind.POINTER, "${p.pointer}", "${p.pointer}: ${p.message} [${p.code}]")
@@ -1584,28 +1508,25 @@ public class TrideKitScene(trdBytes: ByteArray) : AutoCloseable {
         for ((gltfIndex, lanes) in accumulator.morphWeights) {
             val count = bridge.morphTargetCount(gltfIndex)
             if (count <= 0) { warnOnce(TrideKitDiagnosticKind.POINTER, "$gltfIndex", "node $gltfIndex has no morph targets — its weights are ignored"); continue }
-            val fold = morphWeights.fold(gltfIndex, count, lanes)
+            // A node's vector starts at its row's weights at rest: lanes nothing writes keep what the mesh was uploaded with.
+            val rest = recordScene?.let { r -> r.uidAt.getOrNull(gltfIndex)?.let(r.restWeights::get) }
+            val fold = morphWeights.fold(gltfIndex, count, rest, lanes)
             for (lane in fold.rejected) warnOnce(TrideKitDiagnosticKind.POINTER, "$gltfIndex/$lane", "node $gltfIndex has no morph target $lane")
             bridge.setMorphWeights(gltfIndex, fold.vector)
         }
         accumulator.morphWeights.clear()
 
-        // Light and camera poses: their position / rotation lanes on the held pose (one per light and
-        // camera), written to the carrier node — or to the light itself when it has none.
-        val poseLanes = ArrayList<PoseLane>()
-        // Lights: the other channels accumulate per slug, seeded from the descriptor.
+        // Lights: their parameters, resolved by the core; a pair (the cones, the colour) arrives whole.
         if (routed.light.isNotEmpty()) {
             val accs = LinkedHashMap<String, LightAcc>()
             for (lm in routed.light) {
-                val d = lightDescriptors[lm.lightId]
-                if (d == null && !bridge.hasLight(lm.lightId)) { warnOnce(TrideKitDiagnosticKind.POINTER, "${lm.lightId}", "light '${lm.lightId}' is not in the manifest"); continue }
-                if (lm.property == "position" || lm.property == "rotation") {
-                    poseLanes += PoseLane(lightPose(lm.lightId), lm.property, lm.component, lm.value)
-                    continue
-                }
+                if (!bridge.hasLight(lm.lightId)) { warnOnce(TrideKitDiagnosticKind.POINTER, lm.lightId, "light '${lm.lightId}' is not in the scene"); continue }
                 val acc = accs.getOrPut(lm.lightId) { LightAcc() }
                 when (lm.property) {
-                    "color" -> acc.color = patch(acc.color ?: d?.color?.toDoubleArray() ?: doubleArrayOf(1.0, 1.0, 1.0), lm.component, lm.value)
+                    "color" -> when {
+                        lm.component == null && lm.value is DoubleArray -> acc.color = lm.value
+                        else -> warnOnce(TrideKitDiagnosticKind.POINTER, "${lm.lightId}/color", "light '${lm.lightId}': a colour lane alone — the core sends the colour whole; not applied")
+                    }
                     "intensity" -> (lm.value as? Double)?.let { acc.intensity = it }
                     "range" -> (lm.value as? Double)?.let { acc.range = it }
                     "innerConeAngle" -> (lm.value as? Double)?.let { acc.inner = it }
@@ -1616,20 +1537,19 @@ public class TrideKitScene(trdBytes: ByteArray) : AutoCloseable {
                 acc.color?.let { bridge.setLightColor(id, it[0], it[1], it[2]) }
                 acc.intensity?.let { bridge.setLightIntensity(id, it) }
                 acc.range?.let { bridge.setLightRange(id, it) }
-                if (acc.inner != null || acc.outer != null) {
-                    val d = lightDescriptors[id]
-                    bridge.setLightCone(id, acc.inner ?: d?.innerConeAngle ?: 0.0, acc.outer ?: d?.outerConeAngle ?: (Math.PI / 4))
-                }
+                val inner = acc.inner
+                val outer = acc.outer
+                if (inner != null && outer != null) bridge.setLightCone(id, inner, outer)
+                else if (inner != null || outer != null) warnOnce(TrideKitDiagnosticKind.POINTER, "$id/cone", "light '$id': one cone angle alone — the core sends both; not applied")
             }
         }
 
-        // Cameras: the pose on the held pose (above), the lens on the component.
+        // Cameras: the lens on the component (the pose is the node's).
         if (routed.camera.isNotEmpty()) {
             val lenses = LinkedHashMap<String, Lens>()
             for (cm in routed.camera) {
-                if (cameraDescriptors[cm.cameraId] == null) { warnOnce(TrideKitDiagnosticKind.POINTER, "${cm.cameraId}", "camera '${cm.cameraId}' is not in the manifest"); continue }
+                if (!bridge.hasCamera(cm.cameraId)) { warnOnce(TrideKitDiagnosticKind.POINTER, cm.cameraId, "camera '${cm.cameraId}' is not in the scene"); continue }
                 when (cm.property) {
-                    "position", "rotation" -> poseLanes += PoseLane(cameraPose(cm.cameraId), cm.property, cm.component, cm.value)
                     "yfov" -> (cm.value as? Double)?.let { lenses.getOrPut(cm.cameraId) { Lens() }.yfov = it }
                     "znear" -> (cm.value as? Double)?.let { lenses.getOrPut(cm.cameraId) { Lens() }.znear = it }
                     "zfar" -> (cm.value as? Double)?.let { lenses.getOrPut(cm.cameraId) { Lens() }.zfar = it }
@@ -1642,11 +1562,6 @@ public class TrideKitScene(trdBytes: ByteArray) : AutoCloseable {
                 lens.focus?.let { bridge.setCameraFocusDistance(id, it) }
                 lens.aperture?.let { bridge.setCameraAperture(id, it) }
             }
-        }
-        if (poseLanes.isNotEmpty()) {
-            val fold = poses.fold(poseLanes)
-            for (lane in fold.refused) warnOnce(TrideKitDiagnosticKind.POINTER, "${lane.id}/${lane.property}", "${lane.id}/${lane.property}: expects an axis number or a 3-vector")
-            for (key in fold.wrote) writePose(key, bridge)
         }
         routed.activeCamera?.let { bridge.setActiveCamera(it) }
 

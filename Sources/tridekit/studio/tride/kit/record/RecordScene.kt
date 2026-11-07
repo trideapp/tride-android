@@ -1,12 +1,12 @@
 /**
- * `RecordScene` — a scene laid out from the core's scene record: one place per node row, in the record's order,
- * then one carrier place per light and per camera. It is the one table the scene and the bridge address nodes,
- * lights and cameras through: a place's number is the node index, so there is no second lookup.
+ * `RecordScene` — a scene laid out from the core's scene record: one place per node row, in the record's order.
+ * It is the one table the scene and the bridge address nodes, lights and cameras through: a place's number is the
+ * node index, and a light / camera is the node row that names it by slug, so there is no second lookup.
  *
  * Public API (inside TrideKit):
  *   - `RecordScene(record)` — `places` (`RecordPlace`: parent place, local translation, rotation `[x, y, z, w]`,
- *     scale), `rowOf` (node uid → row), `uidAt` (row → node uid), `carrierPlace` (light / camera id → its
- *     place), `visibleAt` (row → the core's visibility to the renderer at load), `datablockNodes` (every node
+ *     scale), `rowOf` (node uid → row), `uidAt` (row → node uid), `lights` / `cameras` (each record with
+ *     the row of the node holding it, `Held`), `visibleAt` (row → the core's visibility to the renderer at load), `datablockNodes` (every node
  *     that draws a datablock), `materials` (the record's palette: how the core draws each slug), `restWeights`
  *     (node uid → morph weights at rest), `skins` / `skinOf` (the record's skins, node uid → its skin), `notices`
  *     (what was laid out otherwise than the record says).
@@ -21,13 +21,15 @@
  *     file as it is.
  *   - A parent that names no place, or a chain of parents that loops, hangs the place at the root; said once
  *     in `notices`.
- *   - A light / camera carrier holds the record's local pose (the core turned the angles into the quaternion)
- *     under its parent row at scale 1; the Light / Camera component sits on it at identity, as gltfio puts a
- *     glTF light or camera on its node.
+ *   - A light / camera is drawn only at the node row that names its slug (the first one); the record's own
+ *     `parent` / `translation` / `rotation` are not read (the node's pose is the pose). A record no row names,
+ *     or a row naming a slug the record lacks, is said once in `notices` and draws no light / camera.
  */
 package studio.tride.kit.record
 
 import studio.tride.core.TrideParametricNode
+import studio.tride.core.TrideRecordCamera
+import studio.tride.core.TrideRecordLight
 import studio.tride.core.TrideRecordMaterial
 import studio.tride.core.TrideRecordSkin
 import studio.tride.core.TrideSceneRecord
@@ -40,11 +42,15 @@ internal class RecordPlace(
     val scale: DoubleArray,
 )
 
+/** A light / camera record and the row of the node that holds it. */
+internal data class Held<T>(val record: T, val row: Int)
+
 internal class RecordScene(record: TrideSceneRecord) {
     val places: List<RecordPlace>
     val rowOf: Map<String, Int>
     val uidAt: List<String>
-    val carrierPlace: Map<String, Int>
+    val lights: List<Held<TrideRecordLight>>
+    val cameras: List<Held<TrideRecordCamera>>
     val visibleAt: List<Boolean>
     val datablockNodes: List<TrideParametricNode>
     val materials: List<TrideRecordMaterial> = record.materials
@@ -65,34 +71,24 @@ internal class RecordScene(record: TrideSceneRecord) {
             node.datablock?.let { datablocks += TrideParametricNode(node.uid, it) }
             raw += RecordPlace(node.parent?.toInt(), vec(node.translation, 3, 0.0), quat(node.rotation), vec(node.scale, 3, 1.0))
         }
-        val carriers = LinkedHashMap<String, Int>()
-        for (light in record.lights) {
-            carriers[light.id] = raw.size
-            raw += RecordPlace(light.parent?.toInt(), vec(light.translation, 3, 0.0), quat(light.rotation), UNIT)
-        }
-        for (camera in record.cameras) {
-            carriers[camera.id] = raw.size
-            raw += RecordPlace(camera.parent?.toInt(), vec(camera.translation, 3, 0.0), quat(camera.rotation), UNIT)
-        }
         val said = ArrayList<String>()
         places = raw.mapIndexed { i, place ->
             val parent = place.parent ?: return@mapIndexed place
             if (reachesRoot(raw, i)) return@mapIndexed place
-            val name = record.nodes.getOrNull(i)?.uid ?: carriers.entries.firstOrNull { it.value == i }?.key ?: "$i"
+            val name = record.nodes.getOrNull(i)?.uid ?: "$i"
             said += "'$name': parent $parent is no place of the scene or loops back, drawn at the root"
             RecordPlace(null, place.translation, place.rotation, place.scale)
         }
         rowOf = rows
         uidAt = record.nodes.map { it.uid }
-        carrierPlace = carriers
+        lights = held("light", record.lights.map { it.id to it }, record.nodes.map { it.light }, record, said)
+        cameras = held("camera", record.cameras.map { it.id to it }, record.nodes.map { it.camera }, record, said)
         visibleAt = record.nodes.map { it.visible }
         datablockNodes = datablocks
         notices = said
     }
 
     companion object {
-        private val UNIT = doubleArrayOf(1.0, 1.0, 1.0)
-
         /** What of a record's `requires` Android draws: skins by the core's palettes, morphs, lines, points, strips. */
         val DRAWN_REQUIRES: Set<String> = setOf("skins", "morphs", "lines", "points", "strips")
 
@@ -107,6 +103,19 @@ internal class RecordScene(record: TrideSceneRecord) {
         fun gapsNotice(gaps: Map<String, List<String>>): String? {
             if (gaps.isEmpty()) return null
             return "the scene draws " + gaps.keys.sorted().joinToString("; ") { "'$it' without its ${gaps.getValue(it).joinToString(", ")}" }
+        }
+
+        /** Each record of [records] (slug → record) at the first row of [named] (each row's slug) naming it; the rest said. */
+        private fun <T> held(kind: String, records: List<Pair<String, T>>, named: List<String?>, record: TrideSceneRecord, said: MutableList<String>): List<Held<T>> {
+            val rowOfSlug = LinkedHashMap<String, Int>()
+            for ((row, slug) in named.withIndex()) if (slug != null) rowOfSlug.putIfAbsent(slug, row)
+            val known = records.map { it.first }.toSet()
+            for ((slug, row) in rowOfSlug) if (slug !in known) said += "'${record.nodes[row].uid}': holds $kind '$slug', which the scene has no record of: no $kind there"
+            return records.mapNotNull { (slug, r) ->
+                val row = rowOfSlug[slug]
+                if (row == null) said += "$kind '$slug': no node of the scene holds it, not drawn"
+                row?.let { Held(r, it) }
+            }
         }
 
         private fun vec(v: List<Double>, n: Int, fill: Double) = DoubleArray(n) { v.getOrNull(it) ?: fill }
