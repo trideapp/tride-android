@@ -4,7 +4,7 @@
  * composed here.
  *
  * Contents: `rotateByQuat`, `normalize3`, `decomposeTRS`, `rigid` (a world with its scaling ignored), `eulerXYZToMat3`
- * (IBL rotation), `isEmptyBox`.
+ * (IBL rotation).
  *
  * Non-obvious constraints:
  *   - Quaternions are `[x, y, z, w]` everywhere; Filament's `float[16]` is column-major, and so is the
@@ -115,11 +115,4 @@ internal object TrideMath {
             m[12], m[13], m[14], 1f,
         )
     }
-
-    /**
-     * An empty `Aabb` (Filament's default: min = FLT_MAX, max = lowest) reaches Java as a negative
-     * half-extent; a NaN / infinite one is no box either.
-     */
-    fun isEmptyBox(center: FloatArray, halfExtent: FloatArray): Boolean =
-        !(center + halfExtent).all { it.isFinite() } || halfExtent.any { it < 0f }
 }

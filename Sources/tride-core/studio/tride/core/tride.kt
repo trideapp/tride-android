@@ -7565,7 +7565,8 @@ public object FfiConverterTypeTrideRecordStandard: FfiConverterRustBuffer<TrideR
 /**
  * The host's render knobs over the scene's render settings; every `None` keeps the
  * scene's value. Bloom, shadows and depth of field only switch off: `Some(true)` keeps the
- * scene's.
+ * scene's. `temporal_effects: Some(false)` switches off what makes a frame depend on the frames
+ * before it — dithering, temporal anti-aliasing, dynamic resolution — for output that repeats.
  */
 data class TrideRenderOverrides (
     var `msaa`: kotlin.Boolean? = null, 
@@ -7575,7 +7576,8 @@ data class TrideRenderOverrides (
     var `msaaSamples`: kotlin.UByte? = null, 
     var `bloom`: kotlin.Boolean? = null, 
     var `shadows`: kotlin.Boolean? = null, 
-    var `depthOfField`: kotlin.Boolean? = null
+    var `depthOfField`: kotlin.Boolean? = null, 
+    var `temporalEffects`: kotlin.Boolean? = null
 ) {
     
     companion object
@@ -7592,6 +7594,7 @@ public object FfiConverterTypeTrideRenderOverrides: FfiConverterRustBuffer<Tride
             FfiConverterOptionalBoolean.read(buf),
             FfiConverterOptionalBoolean.read(buf),
             FfiConverterOptionalBoolean.read(buf),
+            FfiConverterOptionalBoolean.read(buf),
         )
     }
 
@@ -7600,7 +7603,8 @@ public object FfiConverterTypeTrideRenderOverrides: FfiConverterRustBuffer<Tride
             FfiConverterOptionalUByte.allocationSize(value.`msaaSamples`) +
             FfiConverterOptionalBoolean.allocationSize(value.`bloom`) +
             FfiConverterOptionalBoolean.allocationSize(value.`shadows`) +
-            FfiConverterOptionalBoolean.allocationSize(value.`depthOfField`)
+            FfiConverterOptionalBoolean.allocationSize(value.`depthOfField`) +
+            FfiConverterOptionalBoolean.allocationSize(value.`temporalEffects`)
     )
 
     override fun write(value: TrideRenderOverrides, buf: ByteBuffer) {
@@ -7609,6 +7613,7 @@ public object FfiConverterTypeTrideRenderOverrides: FfiConverterRustBuffer<Tride
             FfiConverterOptionalBoolean.write(value.`bloom`, buf)
             FfiConverterOptionalBoolean.write(value.`shadows`, buf)
             FfiConverterOptionalBoolean.write(value.`depthOfField`, buf)
+            FfiConverterOptionalBoolean.write(value.`temporalEffects`, buf)
     }
 }
 
