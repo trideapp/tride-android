@@ -75,6 +75,7 @@ import studio.tride.core.TrideBonePalette
 import studio.tride.core.TrideDatablockMesh
 import studio.tride.core.TrideBoundInput
 import studio.tride.core.TrideDragAxes
+import studio.tride.core.TrideEnvironmentSourceRef
 import studio.tride.core.TrideGeneratedGeometry
 import studio.tride.core.TrideHostCamera
 import studio.tride.core.TrideInputMapping
@@ -337,8 +338,6 @@ public class TrideKitScene(trdBytes: ByteArray) : AutoCloseable {
     private class Baseline(val position: DoubleArray, val rotation: DoubleArray, val scale: DoubleArray)
     private val nodeIdToIndex = HashMap<String, Int>()
     private val baselines = HashMap<String, Baseline>()
-    private var environmentBaseEuler = doubleArrayOf(0.0, 0.0, 0.0)
-    private var environmentBaseBackground = doubleArrayOf(0.07, 0.07, 0.07)
     /** The host's render knobs (a copy: the record's fields are mutable); `null` = none. */
     private var knobs: TrideRenderOverrides? = null
     /** Saturation, fog colour and bloom strength as the frames wrote them over the authored settings. */
@@ -951,9 +950,6 @@ public class TrideKitScene(trdBytes: ByteArray) : AutoCloseable {
         applyNodeVisibility(bridge)
         applyRenderSettings(bridge, fresh = true)
         applyEnvironment(bridge, assets)
-        val bg = core.backgroundColor()
-        if (bg.size >= 3) environmentBaseBackground = doubleArrayOf(bg[0], bg[1], bg[2])
-        bridge.setBackgroundColor(environmentBaseBackground[0], environmentBaseBackground[1], environmentBaseBackground[2])
         if (pendingAdvance.isNotEmpty()) { dispatch(pendingAdvance, bridge); pendingAdvance = ArrayList() }
         // A new bridge holds nothing the runtime already handed out: the next tick is whole.
         core.requestFullFrame()
@@ -1395,26 +1391,33 @@ public class TrideKitScene(trdBytes: ByteArray) : AutoCloseable {
         bridge.applyRenderSettings(settings)
     }
 
+    /**
+     * The frame has alpha (static for the scene) — the view makes its surface translucent for it
+     * before the scene is attached; `false` when the runtime hands no frame.
+     */
+    internal fun drawsTransparent(): Boolean = core.environmentFrame()?.transparent ?: false
+
+    /**
+     * The scene's environments as the core reads them (`environmentFrame`): the light's map and the shown map's
+     * picture read here, once — a preset from the library's `tride/ibl/`, a custom map from the `.trd`'s
+     * `assets/ibl/` — then every value goes to the bridge as the core computed it.
+     */
     private fun applyEnvironment(bridge: FilamentSceneBridge, assets: AssetManager?) {
-        val env = core.environment() ?: return
-        if (env.rotation.size >= 3) environmentBaseEuler = doubleArrayOf(env.rotation[0], env.rotation[1], env.rotation[2])
-        val ibl: ByteArray?
-        val skybox: ByteArray?
-        when (env.kind) {
-            "preset" -> {
-                if (assets == null) { reportLoad(env.name, "environment preset '${env.name}' needs the app's AssetManager — default lighting"); return }
-                ibl = readAsset(assets, "tride/ibl/${env.name}_ibl.ktx")
-                skybox = if (env.backgroundVisible) readAsset(assets, "tride/ibl/${env.name}_skybox.ktx") else null
-            }
-            "custom" -> {
-                ibl = core.assetBytes("assets/ibl/${env.name}_ibl.ktx")
-                skybox = if (env.backgroundVisible) core.assetBytes("assets/ibl/${env.name}_skybox.ktx") else null
-            }
-            else -> { reportLoad(env.name, "environment kind '${env.kind}' is unknown to this TrideKit — default lighting"); return }
+        val frame = core.environmentFrame() ?: run {
+            reportLoad("environment", "the runtime hands no environment frame — no environment light, nothing behind the scene")
+            return
         }
-        if (ibl == null) { reportLoad(env.name, "environment '${env.name}' (${env.kind}) has no lighting file — default lighting"); return }
-        bridge.setIndirectLight(ibl, skybox, env.intensity, environmentBaseEuler)
-        Log.i(TAG, "environment applied: ${env.kind} '${env.name}' (skybox=${skybox != null}, intensity=${env.intensity}, rotation=${env.rotation})")
+        fun mapBytes(source: TrideEnvironmentSourceRef, suffix: String): ByteArray? = when (source.kind) {
+            "preset" -> assets?.let { readAsset(it, "tride/ibl/${source.name}_$suffix.ktx") }
+                ?: run { reportLoad(source.name, "environment preset '${source.name}' has no $suffix file in this TrideKit"); null }
+            "custom" -> core.assetBytes("assets/ibl/${source.name}_$suffix.ktx")
+                ?: run { reportLoad(source.name, "environment '${source.name}' has no $suffix file in the scene"); null }
+            else -> { reportLoad(source.name, "environment source '${source.kind}' is no map"); null }
+        }
+        val light = frame.light.source?.takeIf { frame.light.kind == "map" }?.let { mapBytes(it, "ibl") }
+        val sky = frame.sky.map?.let { mapBytes(it.source, "skybox") }
+        bridge.applyEnvironment(frame, EnvironmentMaps(light, sky))
+        Log.i(TAG, "environment: light=${frame.light.kind} map shown=${frame.sky.map != null} transparent=${frame.transparent}")
     }
 
     private fun readAsset(assets: AssetManager, path: String): ByteArray? =
@@ -1469,12 +1472,6 @@ public class TrideKitScene(trdBytes: ByteArray) : AutoCloseable {
         var inner: Double? = null; var outer: Double? = null
     }
     private class Lens { var yfov: Double? = null; var znear: Double? = null; var zfar: Double? = null; var focus: Double? = null; var aperture: Double? = null }
-
-    private fun patch(base: DoubleArray, component: Int?, value: Any): DoubleArray? = when {
-        component != null && value is Double -> base.copyOf().also { it[component] = value }
-        value is DoubleArray && value.size >= 3 -> doubleArrayOf(value[0], value[1], value[2])
-        else -> null
-    }
 
     private fun dispatch(mutations: List<TrideMutation>, bridge: FilamentSceneBridge, complete: Boolean = false) {
         val routed = routeMutations(mutations.map { PointerMutation(it.pointer, decode(it)) }, resolver)
@@ -1565,20 +1562,9 @@ public class TrideKitScene(trdBytes: ByteArray) : AutoCloseable {
         }
         routed.activeCamera?.let { bridge.setActiveCamera(it) }
 
-        // Environment, then the animatable render settings (saturation, fog colour, bloom strength, pixelation).
-        if (accumulator.environmentMutations.isNotEmpty()) {
-            var euler: DoubleArray? = null
-            var intensity: Double? = null
-            var background: DoubleArray? = null
-            for (em in accumulator.environmentMutations) when (em.property) {
-                "rotation" -> euler = patch(euler ?: environmentBaseEuler, em.component, em.value)
-                "intensity" -> (em.value as? Double)?.let { intensity = it }
-                "background_color" -> background = patch(background ?: environmentBaseBackground, em.component, em.value)
-            }
-            euler?.let { environmentBaseEuler = it; bridge.setIndirectLightRotation(it) }
-            intensity?.let { bridge.setIndirectLightIntensity(it) }
-            background?.let { environmentBaseBackground = it; bridge.setBackgroundColor(it[0], it[1], it[2]) }
-        }
+        // Environment (the core's frame read again after a write to one), then the animatable render settings
+        // (saturation, fog colour, bloom strength, pixelation).
+        if (routed.environment.isNotEmpty()) core.environmentFrame()?.let { bridge.updateEnvironment(it) }
         if (routed.renderSettings.isNotEmpty() || complete) {
             val moved = liveRender.fold(routed.renderSettings, complete)
             if (moved.saturation) bridge.setSaturation(liveRender.saturation)
@@ -1632,7 +1618,6 @@ public class TrideKitScene(trdBytes: ByteArray) : AutoCloseable {
         // A mesh re-uploaded under a hidden host must stay hidden.
         val anyHidden = drawVisible.values.any { !it }
         if ((dirtyGenerators.isNotEmpty() || dirtyDatablocks.isNotEmpty() || dirtyDeformed.isNotEmpty()) && anyHidden) applyNodeVisibility(bridge)
-        accumulator.clearBuckets()
     }
 
     private fun deliverSignals() {

@@ -1,16 +1,18 @@
 /**
  * Kotlin over Filament-Android — the applier a frame lands on: engine / view / scene / cameras, the scene
  * built from the places of the core's scene record, the place → entity map, node TRS / visibility / morph
- * weights, lights and cameras on their nodes' places, IBL + skybox + background, the view's render settings
+ * weights, lights and cameras on their nodes' places, the scene's environment, the view's render settings
  * and the render loop.
  *
  * Public API:
- *   - `attachSurface` / `detachSurface` / `resize`, `loadPlaces(places)`, `render(frameTimeNanos)`, `dispose`.
+ *   - `attachSurface` (also to make the swap chain again on a resized surface) / `detachSurface` / `resize`,
+ *     `loadPlaces(places)`, `render(frameTimeNanos)`, `dispose`.
  *   - Nodes: `entityForPlace`, `setNodeTRS`, `setNodeVisible`, `morphTargetCount`, `setMorphWeights`,
  *     `worldTransform` (checks).
  *   - Lights: `addLights`, `setLight*`; cameras: `addCameras`, `setActiveCamera`, `setCamera*`,
  *     `defaultCameraPose`, `drawnCameraPose`, `useFreeCamera`, `setViewCameraOrbit`; `setShadowingEnabled`.
- *   - Environment: `setIndirectLight`, `setIndirectLightIntensity` / `Rotation`, `setBackgroundColor`.
+ *   - Environment: `applyEnvironment(frame, maps)` at load, `updateEnvironment(frame)` after a write — the core's
+ *     frame drawn by `FilamentEnvironment`; `drawsTransparent` (the view's blend mode, for checks).
  *   - Render settings: `applyRenderSettings` / `restoreInitialRenderSettings`, then live `setSaturation` /
  *     `setFogColor` / `setBloomStrength` / `setPixelation`; `renderSettingsShown` / `saturationShown` / `fogColorShown` / `bloomShown` / `msaaShown` /
  *     `depthOfFieldShown` / `pixelationGridShown` / `pixelationTargets` (what the view draws now, for tests).
@@ -31,8 +33,9 @@
  *     a camera's aperture (f-number) also sets shutter and ISO so exposure stays that of f/16, 1/125 s,
  *     ISO 100; on the emulator's GL the
  *     scene is drawn without shadows (any shadow map blackens the frame there) — decided by the backend the
- *     engine was made on, not by the device: the emulator's Vulkan draws them; the background is a solid
- *     grey skybox until the scene sets one.
+ *     engine was made on, not by the device: the emulator's Vulkan draws them.
+ *   - Behind the scene is nothing of the bridge's own: the frame is cleared to (0, 0, 0, 0) and the scene's
+ *     environment draws its stack; until a scene's environment is applied the frame is clear.
  *   - Backend: Vulkan or OpenGL as asked; an `Engine.Builder` that throws falls back to OpenGL (a Vulkan
  *     driver failure inside Filament is a native abort, not catchable). Shaders compile synchronously,
  *     so the first frame an on-demand host asks for is complete, not black.
@@ -58,25 +61,23 @@ import com.google.android.filament.ToneMapper
 import com.google.android.filament.Engine
 import com.google.android.filament.EntityManager
 import com.google.android.filament.Filament
-import com.google.android.filament.IndirectLight
 import com.google.android.filament.LightManager
 import com.google.android.filament.Material
 import com.google.android.filament.Renderer
 import com.google.android.filament.Scene
-import com.google.android.filament.Skybox
 import com.google.android.filament.SwapChain
 import com.google.android.filament.Texture
 import com.google.android.filament.View
 import com.google.android.filament.Viewport
 import com.google.android.filament.gltfio.Gltfio
 import com.google.android.filament.gltfio.UbershaderProvider
-import com.google.android.filament.utils.KTX1Loader
 import com.google.android.filament.utils.Utils
 import studio.tride.core.TrideAntiAliasing
 import studio.tride.core.TrideBloomOptions
 import studio.tride.core.TrideDefaultFraming
 import studio.tride.core.TrideDithering
 import studio.tride.core.TrideDofFilter
+import studio.tride.core.TrideEnvironmentFrame
 import studio.tride.core.TridePixelationOptions
 import studio.tride.core.TrideQualityLevel
 import studio.tride.core.TrideRenderSettings
@@ -175,7 +176,6 @@ internal class FilamentSceneBridge(
     private val view: View
     private val defaultCameraEntity: Int
     private val defaultCamera: Camera
-    private val solidSkybox: Skybox
     private var swapChain: SwapChain? = null
     private var width = 1
     private var height = 1
@@ -216,17 +216,11 @@ internal class FilamentSceneBridge(
     var activeCameraId: String? = null
         private set
 
-    private var indirectLight: IndirectLight? = null
-    private var iblTexture: Texture? = null
-    private var iblSkybox: Skybox? = null
-    private var iblSkyboxTexture: Texture? = null
+    /** The scene's environment (made at its first `applyEnvironment`). */
+    private var environment: FilamentEnvironment? = null
 
-    /** The core's tone mapper for the scene's operator (`toneCurve`). */
-    private var toneMapper: TrideToneMapper = TrideToneMapper.Aces
-    private var exposure = 0f
-    private var luminanceScaling = false
-    private var gamutMapping = false
-    private var saturation = 1f
+    /** What [colorGrading] was built from: settings that leave it unchanged keep it. */
+    private var gradingInputs = ColorGradingInputs()
     private var authoredSaturation = 1f
     /** The live saturation and fog colour the frames wrote last (`null` = authored). */
     private var liveSaturation: Double? = null
@@ -290,15 +284,12 @@ internal class FilamentSceneBridge(
         view.setShadowingEnabled(shadowing)
         view.setScreenSpaceRefractionEnabled(true)
         initialRenderOptions = ViewRenderOptions(view, shadowing)
-        // The scene's background: a solid skybox, so it goes through exposure and tone mapping.
-        solidSkybox = Skybox.Builder().color(0.07f, 0.07f, 0.07f, 1f).build(engine)
-        filamentScene.skybox = solidSkybox
-        // Clear the colour buffer every frame (same grey):
-        // Filament draws only the viewport into its 16-padded post-processing buffers, and the
-        // padding left uncleared is undefined on tile-based GPUs — TAA / DOF / bloom / SSAO pull it
-        // into the right / top edges as flickering blobs.
+        // Clear the colour buffer every frame to (0, 0, 0, 0) — nothing behind the scene's environment, so a
+        // transparent stack shows what is under the view. Cleared at all: Filament draws only the
+        // viewport into its 16-padded post-processing buffers, and the padding left uncleared is undefined on
+        // tile-based GPUs — TAA / DOF / bloom / SSAO pull it into the right / top edges as flickering blobs.
         renderer.clearOptions = Renderer.ClearOptions().apply {
-            clearColor = doubleArrayOf(0.07, 0.07, 0.07, 1.0)
+            clearColor = doubleArrayOf(0.0, 0.0, 0.0, 0.0)
             clear = true
             discard = true
         }
@@ -312,9 +303,14 @@ internal class FilamentSceneBridge(
     // Surface / size / render loop
     // ---------------------------------------------------------------------------------------------
 
+    /**
+     * The swap chain on [surface], made anew: a new surface, or the same one resized (Vulkan reads its size
+     * when the swap chain is made). The one before leaves the window first, waited for: Android lets one
+     * producer connect to a window at a time.
+     */
     fun attachSurface(surface: Surface, flags: Long) {
         if (disposed) return
-        swapChain?.let { engine.destroySwapChain(it) }
+        if (swapChain != null) releaseSwapChain()
         swapChain = engine.createSwapChain(surface, flags)
         needsRender = true
     }
@@ -386,7 +382,8 @@ internal class FilamentSceneBridge(
         disposed = true
         releaseSwapChain()
         generators = null // the setter disposes it
-        teardownIndirectLight()
+        environment?.dispose()
+        environment = null
         val tm = engine.transformManager
         // The scene cameras' own entities.
         for (rec in cameras.values) {
@@ -413,7 +410,6 @@ internal class FilamentSceneBridge(
         engine.destroyView(view)
         colorGrading?.let { engine.destroyColorGrading(it) }
         colorGrading = null
-        engine.destroySkybox(solidSkybox)
         engine.destroyScene(filamentScene)
         engine.destroyRenderer(renderer)
         engine.destroyCameraComponent(defaultCameraEntity)
@@ -903,58 +899,25 @@ internal class FilamentSceneBridge(
     // Environment
     // ---------------------------------------------------------------------------------------------
 
-    private fun teardownIndirectLight() {
-        indirectLight?.let { filamentScene.indirectLight = null }
-        iblSkybox?.let { filamentScene.skybox = solidSkybox; engine.destroySkybox(it) }
-        iblSkybox = null
-        iblSkyboxTexture?.let { engine.destroyTexture(it) }
-        iblSkyboxTexture = null
-        indirectLight?.let { engine.destroyIndirectLight(it) }
-        indirectLight = null
-        iblTexture?.let { engine.destroyTexture(it) }
-        iblTexture = null
-    }
-
-    private fun direct(bytes: ByteArray): ByteBuffer = ByteBuffer.allocateDirect(bytes.size).put(bytes).apply { rewind() }
-
-    fun setIndirectLight(iblKtx: ByteArray, skyboxKtx: ByteArray?, intensity: Double, eulerXYZ: DoubleArray) {
-        if (disposed || iblKtx.isEmpty()) return
-        teardownIndirectLight()
-        val ibl = KTX1Loader.createIndirectLight(engine, direct(iblKtx), KTX1Loader.Options())
-        val light = ibl.indirectLight
-        if (light == null) { loadProblem("environment", "setIndirectLight: KTX1Loader.createIndirectLight failed (${iblKtx.size} bytes)"); return }
-        light.intensity = intensity.toFloat()
-        light.setRotation(TrideMath.eulerXYZToMat3(eulerXYZ))
-        indirectLight = light
-        iblTexture = ibl.cubemap
-        filamentScene.indirectLight = light
-        if (skyboxKtx != null && skyboxKtx.isNotEmpty()) {
-            val sky = KTX1Loader.createSkybox(engine, direct(skyboxKtx), KTX1Loader.Options())
-            val skybox = sky.skybox
-            if (skybox != null) {
-                iblSkybox = skybox
-                iblSkyboxTexture = sky.cubemap
-                filamentScene.skybox = skybox
-            } else loadProblem("environment", "setIndirectLight: createSkybox failed — IBL lit, solid background")
-        }
+    /** The scene's environment from the core's frame and its maps' KTX bytes (`TrideKitScene.applyEnvironment`). */
+    fun applyEnvironment(frame: TrideEnvironmentFrame, maps: EnvironmentMaps) {
+        if (disposed) return
+        val env = environment ?: FilamentEnvironment(
+            engine, filamentScene, view, { name -> materialPackage?.invoke(name) }, ::loadProblem,
+        ).also { environment = it }
+        env.apply(frame, maps)
         needsRender = true
-        Log.i(TAG, "setIndirectLight: IBL applied (skybox=${iblSkybox != null}, intensity=$intensity)")
     }
 
-    fun setIndirectLightIntensity(intensity: Double) {
+    /** The same scene's frame after a write to one of its environments: values only. */
+    fun updateEnvironment(frame: TrideEnvironmentFrame) {
         if (disposed) return
-        indirectLight?.intensity = intensity.toFloat(); needsRender = true
+        environment?.update(frame)
+        needsRender = true
     }
 
-    fun setIndirectLightRotation(eulerXYZ: DoubleArray) {
-        if (disposed) return
-        indirectLight?.setRotation(TrideMath.eulerXYZToMat3(eulerXYZ)); needsRender = true
-    }
-
-    fun setBackgroundColor(r: Double, g: Double, b: Double) {
-        if (disposed) return
-        solidSkybox.setColor(r.toFloat(), g.toFloat(), b.toFloat(), 1f); needsRender = true
-    }
+    /** The view blends its frame over what is under it (the scene's environment is transparent). */
+    internal val drawsTransparent: Boolean get() = environment?.drawsTransparent ?: false
 
     // ---------------------------------------------------------------------------------------------
     // Render settings
@@ -979,21 +942,29 @@ internal class FilamentSceneBridge(
         is TrideToneMapper.DisplayRange -> null
     }
 
-    private fun rebuildColorGrading() {
+    /**
+     * The view graded from [inputs]: a colour grading built and swapped in only when they differ from what the
+     * view's own was built from (or it has none) — a held clip repeats its saturation every tick, a host's knob
+     * re-applies the same tone mapping.
+     */
+    private fun grade(inputs: ColorGradingInputs) {
         if (disposed) return
+        if (colorGrading != null && inputs == gradingInputs) return
+        gradingInputs = inputs
         val builder = ColorGrading.Builder()
         // Display Range is the one tone mapper Filament's Java API has only as an enum.
-        val mapper = filamentToneMapper(toneMapper)
+        val mapper = filamentToneMapper(inputs.toneMapper)
         if (mapper != null) builder.toneMapper(mapper) else builder.toneMapping(ColorGrading.ToneMapping.DISPLAY_RANGE)
         val next = builder
-            .exposure(exposure)
-            .luminanceScaling(luminanceScaling)
-            .gamutMapping(gamutMapping)
-            .saturation(saturation)
+            .exposure(inputs.exposure)
+            .luminanceScaling(inputs.luminanceScaling)
+            .gamutMapping(inputs.gamutMapping)
+            .saturation(inputs.saturation)
             .build(engine)
         view.colorGrading = next
         colorGrading?.let { engine.destroyColorGrading(it) }
         colorGrading = next
+        colorGradingBuilds++
         needsRender = true
     }
 
@@ -1002,9 +973,7 @@ internal class FilamentSceneBridge(
         if (disposed) return
         liveSaturation = value
         val s = value?.toFloat()?.coerceIn(0f, MAX_SATURATION) ?: authoredSaturation
-        if (s == saturation && colorGrading != null) return
-        saturation = s
-        rebuildColorGrading()
+        grade(gradingInputs.copy(saturation = s))
     }
 
     /**
@@ -1102,7 +1071,7 @@ internal class FilamentSceneBridge(
         private set
 
     /** The saturation and the fog colour the view draws with now — what a test reads back. */
-    internal val saturationShown: Float get() = saturation
+    internal val saturationShown: Float get() = gradingInputs.saturation
     internal val fogColorShown: FloatArray get() = fogOptions.color.copyOf()
     /** The MSAA and the depth of field the view was given last — what a test reads back. */
     internal val msaaShown: View.MultiSampleAntiAliasingOptions get() = view.multiSampleAntiAliasingOptions
@@ -1185,18 +1154,23 @@ internal class FilamentSceneBridge(
         view.softShadowOptions = View.SoftShadowOptions().apply {
             penumbraScale = s.softShadowOptions.penumbraScale; penumbraRatioScale = s.softShadowOptions.penumbraRatioScale
         }
-        toneMapper = coreToneCurve(s.toneMapping.`operator`)
-        exposure = s.toneMapping.exposure
-        luminanceScaling = s.toneMapping.luminanceScaling
-        gamutMapping = s.toneMapping.gamutMapping
         authoredSaturation = s.toneMapping.saturation.coerceIn(0f, MAX_SATURATION)
-        saturation = liveSaturation?.toFloat()?.coerceIn(0f, MAX_SATURATION) ?: authoredSaturation
-        rebuildColorGrading()
-        Log.i(TAG, "applyRenderSettings: aa=${s.antiAliasing} toneMapping=${s.toneMapping.`operator`} exposure=$exposure bloom=${s.bloom.enabled} ssao=${s.ssao.enabled} dof=${s.depthOfField.enabled}")
+        grade(ColorGradingInputs(
+            toneMapper = coreToneCurve(s.toneMapping.`operator`),
+            exposure = s.toneMapping.exposure,
+            luminanceScaling = s.toneMapping.luminanceScaling,
+            gamutMapping = s.toneMapping.gamutMapping,
+            saturation = liveSaturation?.toFloat()?.coerceIn(0f, MAX_SATURATION) ?: authoredSaturation,
+        ))
+        Log.i(TAG, "applyRenderSettings: aa=${s.antiAliasing} toneMapping=${s.toneMapping.`operator`} exposure=${s.toneMapping.exposure} bloom=${s.bloom.enabled} ssao=${s.ssao.enabled} dof=${s.depthOfField.enabled}")
     }
 
     /** Whether the view draws a colour grading of the bridge's own (`null` = Filament's default) — what a test reads back. */
     internal val colorGradingShown: Boolean get() = colorGrading != null
+
+    /** How many colour gradings the bridge built (each a LUT on the CPU) — what a test reads back. */
+    internal var colorGradingBuilds = 0
+        private set
 
     /**
      * Back to the render settings this view was made with — what it draws for a scene that sets none: every
@@ -1211,11 +1185,7 @@ internal class FilamentSceneBridge(
         renderSettingsShown = null
         authoredBloom = null
         authoredPixelation = TridePixelationOptions(false, 8f)
-        toneMapper = TrideToneMapper.Aces
-        exposure = 0f
-        luminanceScaling = false
-        gamutMapping = false
-        saturation = 1f
+        gradingInputs = ColorGradingInputs()
         authoredSaturation = 1f
         view.colorGrading = null
         colorGrading?.let { engine.destroyColorGrading(it) }
@@ -1238,6 +1208,18 @@ internal class FilamentSceneBridge(
  * shadow type — Filament's default, PCF, which `init` leaves — and only a package-private one for shadowing:
  * the value `init` set is passed in.
  */
+/**
+ * What the colour grading is built from: the core's tone mapper (`toneCurve`), exposure, luminance scaling, gamut
+ * mapping and saturation. It is built again only when one of them moved.
+ */
+private data class ColorGradingInputs(
+    val toneMapper: TrideToneMapper = TrideToneMapper.Aces,
+    val exposure: Float = 0f,
+    val luminanceScaling: Boolean = false,
+    val gamutMapping: Boolean = false,
+    val saturation: Float = 1f,
+)
+
 private class ViewRenderOptions(view: View, private val shadowing: Boolean) {
     private val antiAliasing = view.antiAliasing
     private val dithering = view.dithering

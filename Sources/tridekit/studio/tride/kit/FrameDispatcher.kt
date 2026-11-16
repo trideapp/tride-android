@@ -6,8 +6,8 @@
  *   - `TypedValues.decode(mutation)` — the FFI's `TrideTypedValue` → the dispatcher's value shape.
  *   - `PointerDispatch.dispatch(pointer, value, resolver)` → `Dispatch.Ok(CanonicalMutation)` / `Dispatch.Fail`.
  *   - `OverrideAccumulator` — persistent per-node overrides (position / quat / whole Euler / scale /
- *     visible), morph weights and the environment writes of the tick; `resolveLeafRotation`.
- *   - `routeMutations(mutations, resolver)` → `RoutedMutations` (material, camera, light, render settings,
+ *     visible) and morph weights; `resolveLeafRotation`.
+ *   - `routeMutations(mutations, resolver)` → `RoutedMutations` (material, camera, light, environment, render settings,
  *     generator geometry announcements with their `trunkEpoch`, pulse-table announcements, rebuilt
  *     datablocks, nodes bent anew (`/deformed/{uid}/geometry`), `/scene/active_camera`, each node's
  *     visibility to the renderer (`/node/{uid}/drawVisible`), the node stream, problems); a tag leaf (`/tags/{id}/…`) and a deformer leaf (`/deformers/{id}/…`) are the runtime's own.
@@ -21,6 +21,9 @@
  *     from an older scene, Euler (3); a part of it (an Euler lane, a raw component) is a problem — no
  *     axis is composed here. First match wins; an unmatched pointer is a problem, never a silent drop.
  *   - `/scene/active_camera` is a hard cut of the view's camera.
+ *   - `/environments/{id}/…` (rotation lanes, intensity, opacity, a colour source's colour) only
+ *     names the environment written: the core resolves the list into its frame and the host reads it again
+ *     (`environmentFrame`); no value is read here. Another leaf under it is a problem.
  *   - A light / camera is posed by its node's lanes: a pose lane on the record (`/lights/{id}/translation…`)
  *     has no route, a problem like any unmatched pointer; a camera's lens leaves are numbers.
  *   - `/materialOverrides/{slug}/…` lands in the material stream with its slug — the host recolours the
@@ -62,7 +65,6 @@ internal interface NodeResolver {
 
 internal data class LightMutation(val lightId: String, val property: String, val component: Int?, val value: Any)
 internal data class CameraMutation(val cameraId: String, val property: String, val component: Int?, val value: Any)
-internal data class EnvironmentMutation(val property: String, val component: Int?, val value: Any)
 internal data class RenderSettingsMutation(val property: String, val component: Int?, val value: Any)
 internal data class GeneratorParamMutation(val domain: String, val generatorId: String, val leaf: String, val value: Any)
 internal data class MaterialMutation(val materialIndex: Int, val materialSlug: String?, val subPath: String, val value: Any?)
@@ -98,7 +100,6 @@ internal sealed interface CanonicalMutation {
     data class MorphWeight(val gltfIndex: Int, val weightIndex: Int, val value: Double) : CanonicalMutation
     data class Light(val value: LightMutation) : CanonicalMutation
     data class Camera(val value: CameraMutation) : CanonicalMutation
-    data class Environment(val value: EnvironmentMutation) : CanonicalMutation
     data class RenderSettings(val value: RenderSettingsMutation) : CanonicalMutation
     data class Generator(val value: GeneratorParamMutation) : CanonicalMutation
 }
@@ -186,7 +187,6 @@ internal object PointerDispatch {
         }
     }
 
-    private val AXIS_LANE = mapOf("x" to 0, "y" to 1, "z" to 2, "0" to 0, "1" to 1, "2" to 2)
     private val COLOR_LANE = mapOf("r" to 0, "g" to 1, "b" to 2, "0" to 0, "1" to 1, "2" to 2)
 
     private fun scalarOrArray(v: Any?): Any? = when (v) { is Double -> v; is DoubleArray -> v; is Number -> v.toDouble(); else -> null }
@@ -221,28 +221,6 @@ internal object PointerDispatch {
             return then(null, doubleArrayOf(arr[0], arr[1], arr[2]))
         }
         return fail(FailReason.VALUE_SHAPE, pointer, "$what expects rgb(a), got ${describe(value)}")
-    }
-
-    private fun buildEnvironment(property: String, component: String?, value: Any?, pointer: String): Dispatch {
-        when (property) {
-            "background_color" -> return rgbWrite("background colour", component, value, pointer) { lane, v ->
-                ok(CanonicalMutation.Environment(EnvironmentMutation("background_color", lane, v)))
-            }
-            "intensity" -> {
-                if (component != null) return fail(FailReason.UNMATCHED, pointer, "environment 'intensity' has no per-axis lane")
-                val n = number(value) ?: return fail(FailReason.VALUE_SHAPE, pointer, "environment intensity expects number")
-                return ok(CanonicalMutation.Environment(EnvironmentMutation("intensity", null, n)))
-            }
-            else -> {
-                if (component != null) {
-                    val lane = AXIS_LANE[component] ?: return fail(FailReason.UNMATCHED, pointer, "environment lane '$component'")
-                    val n = number(value) ?: return fail(FailReason.VALUE_SHAPE, pointer, "environment rotation component expects number")
-                    return ok(CanonicalMutation.Environment(EnvironmentMutation("rotation", lane, n)))
-                }
-                val v = vec3(value) ?: return fail(FailReason.VALUE_SHAPE, pointer, "environment rotation expects vec3, got ${describe(value)}")
-                return ok(CanonicalMutation.Environment(EnvironmentMutation("rotation", null, v)))
-            }
-        }
     }
 
     /** The render-settings leaves without a lane: leaf → (mutation property, what to call it). */
@@ -294,9 +272,6 @@ internal object PointerDispatch {
         },
         Route(Regex("^/cameras/([^/]+)/(yfov|znear|zfar|focusDistance|aperture)$")) { m, v, _, p ->
             buildCamera(m.groupValues[1], m.groupValues[2], v, p)
-        },
-        Route(Regex("^/environment_settings/(rotation|intensity|background_color)(?:[./]([0-2xyzrgb]))?$")) { m, v, _, p ->
-            buildEnvironment(m.groupValues[1], m.opt(2), v, p)
         },
         Route(Regex("^/render_settings/(tone_mapping/saturation|fog/color|bloom/strength|pixelation/enabled|pixelation/size)(?:[./]([0-2rgb]))?$")) { m, v, _, p ->
             buildRenderSettings(m.groupValues[1], m.opt(2), v, p)
@@ -374,7 +349,6 @@ internal class OverrideAccumulator(private val baseline: BaselineLookup) {
     val overrides = HashMap<String, NodeOverride>()
     val dirty = LinkedHashSet<String>()
     val morphWeights = HashMap<Int, HashMap<Int, Double>>()
-    val environmentMutations = ArrayList<EnvironmentMutation>()
 
     private fun entry(id: String) = overrides.getOrPut(id) { NodeOverride() }
 
@@ -394,7 +368,6 @@ internal class OverrideAccumulator(private val baseline: BaselineLookup) {
             is CanonicalMutation.NodeRotationEuler -> { entry(m.nodeId).eulerRotation = m.value; dirty += m.nodeId }
             is CanonicalMutation.NodeVisible -> { entry(m.nodeId).visible = m.value; dirty += m.nodeId }
             is CanonicalMutation.MorphWeight -> morphWeights.getOrPut(m.gltfIndex) { HashMap() }[m.weightIndex] = m.value
-            is CanonicalMutation.Environment -> environmentMutations += m.value
             // INTENTIONALLY_DROPPED: lights, cameras and render settings never reach the node stream —
             // routeMutations hands them to their own streams first.
             is CanonicalMutation.Light, is CanonicalMutation.Camera, is CanonicalMutation.RenderSettings -> Unit
@@ -402,10 +375,6 @@ internal class OverrideAccumulator(private val baseline: BaselineLookup) {
             // which announces the rebuilt geometry (`/generators/{id}/geometry`) the host then pulls.
             is CanonicalMutation.Generator -> Unit
         }
-    }
-
-    fun clearBuckets() {
-        environmentMutations.clear()
     }
 }
 
@@ -425,6 +394,8 @@ internal class RoutedMutations {
     val glass = ArrayList<GlassWrite>()
     val camera = ArrayList<CameraMutation>()
     val light = ArrayList<LightMutation>()
+    /** `/environments/{id}/…` written this tick: the host reads the core's environment frame again. */
+    val environment = ArrayList<String>()
     /** Generators whose geometry the runtime re-evaluated this tick (the bridge pulls what moved). */
     val generatorGeometry = ArrayList<GeneratorAnnouncement>()
     /** Generators whose pulse table changed (`/generators/{id}/flow`). */
@@ -460,6 +431,9 @@ private val RE_GENERATOR_FLOW = Regex("^/generators/([^/]+)/flow$")
 private val RE_DATABLOCK_GEOMETRY = Regex("^/datablocks/([^/]+)/geometry$")
 private val RE_DEFORMED_GEOMETRY = Regex("^/deformed/([^/]+)/geometry$")
 private val RE_DRAW_VISIBLE = Regex("^/node/([^/]+)/drawVisible$")
+/** An environment's animatable leaf (the core's property catalogue): every lane form. */
+private val RE_ENVIRONMENT_LEAF =
+    Regex("^/environments/[a-z][a-z0-9_]*/(?:rotation(?:[./][xyz012])?|intensity|opacity|source/color(?:[./][0-2rgb])?)$")
 private val RE_MATERIAL_POINTER = Regex("^/materials/(\\d+)/(.+)$")
 private val RE_MATERIAL_OVERRIDE_POINTER = Regex("^/materialOverrides/([^/]+)/(.+)$")
 private val RE_GLTF_PARAM_POINTER = Regex("^/materialOverrides/([^/]+)/gltf/([A-Za-z]+)$")
@@ -593,8 +567,8 @@ private fun failCode(reason: FailReason) = when (reason) {
 }
 
 /**
- * Route by prefix, in this order: generators, datablocks, materials, active camera, cameras, lights,
- * visibility to the renderer, render settings; everything else is the node stream (nodes, morph weights, environment, recipe leaves).
+ * Route by prefix, in this order: generators, datablocks, materials, active camera, cameras, lights, environments,
+ * visibility to the renderer, render settings; everything else is the node stream (nodes, morph weights, recipe leaves).
  */
 internal fun routeMutations(mutations: List<PointerMutation>, resolver: NodeResolver): RoutedMutations {
     val out = RoutedMutations()
@@ -681,6 +655,11 @@ internal fun routeMutations(mutations: List<PointerMutation>, resolver: NodeReso
                 is Dispatch.Ok -> if (d.mutation is CanonicalMutation.Light) out.light += d.mutation.value
                 is Dispatch.Fail -> if (d.reason != FailReason.NODE_NOT_FOUND) out.problems += RouteProblem(p, failCode(d.reason), d.message)
             }
+            continue
+        }
+        if (p.startsWith("/environments/")) {
+            if (RE_ENVIRONMENT_LEAF.matches(p)) out.environment += p
+            else out.problems += RouteProblem(p, failCode(FailReason.UNMATCHED), "'$p' is no animatable leaf of an environment")
             continue
         }
         RE_DRAW_VISIBLE.find(p)?.let {

@@ -5,7 +5,9 @@
  *
  * Public API:
  *   - `TrideSceneView(scene, modifier, backend, renderPolicy, pixelScale, preferredFps, renderOverrides,
- *     onViewCreated, onLoadError)` — `pixelScale` = drawable px per dp (`null` = the screen's), see
+ *     onViewCreated, onLoadError, surface)` — `surface` = a `TextureView` (default: composes with the
+ *     composables around it, a transparent background shows what is under it) or a `SurfaceView`, see
+ *     `FilamentSurfaceView.SurfaceKind`; `pixelScale` = drawable px per dp (`null` = the screen's), see
  *     `FilamentSurfaceView.pixelScale`; `preferredFps` = frames drawn a second, the scene's logic woken no more
  *     often (`null` = every vsync), see `FilamentSurfaceView.preferredFps`; `renderOverrides` = the host's
  *     render knobs over the scene's render settings (`null` = none), see `FilamentSurfaceView.renderOverrides`.
@@ -14,7 +16,7 @@
  *     the view is made — the composable never throws it, as iOS's `TrideSceneView` hands it to `onError`.
  *
  * Non-obvious constraints:
- *   - The view is keyed by the scene: a new `TrideKitScene` recreates the view and its Filament engine (one
+ *   - The view is keyed by the scene and the surface kind: a new `TrideKitScene` recreates the view and its Filament engine (one
  *     engine per scene, as `FilamentSurfaceView.scene` does on one view), the old one released with it.
  *   - The composable never closes the scene — the owner does (`TrideKitScene.close()`).
  *   - A scene the view refused is not shown (the view draws nothing); without `onLoadError` it is a log line.
@@ -46,12 +48,13 @@ public fun TrideSceneView(
     renderOverrides: TrideRenderOverrides? = null,
     onViewCreated: ((FilamentSurfaceView) -> Unit)? = null,
     onLoadError: ((Exception) -> Unit)? = null,
+    surface: FilamentSurfaceView.SurfaceKind = FilamentSurfaceView.SurfaceKind.TEXTURE_VIEW,
 ) {
-    key(scene) {
+    key(scene, surface) {
         AndroidView(
             modifier = modifier,
             factory = { context ->
-                FilamentSurfaceView(context, backend).also { view ->
+                FilamentSurfaceView(context, backend, surface).also { view ->
                     view.renderPolicy = renderPolicy
                     view.pixelScale = pixelScale
                     // Before the scene: its first frame is drawn with the knobs.

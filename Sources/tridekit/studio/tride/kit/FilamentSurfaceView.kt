@@ -1,15 +1,17 @@
 /**
- * `FilamentSurfaceView` — a `SurfaceView` that owns a `FilamentSceneBridge`, hands the surface to Filament
- * through `UiHelper`, drives the scene's tick and the frame from one `Choreographer` callback, and forwards
- * one finger to the scene (`OneFinger`: down / move, and on the lift up then cancel — the scene hears the
- * finger leave).
+ * `FilamentSurfaceView` — the view a scene is drawn in: a `FrameLayout` holding a `TextureView` (the default) or
+ * a `SurfaceView` (`SurfaceKind`), that owns a `FilamentSceneBridge`, hands the surface to Filament through
+ * `UiHelper`, drives the scene's tick and the frame from one `Choreographer` callback, and forwards one finger
+ * to the scene (`OneFinger`: down / move, and on the lift up then cancel — the scene hears the finger leave).
  *
  * Public API:
- *   - `FilamentSurfaceView(context, backend)`; `scene` — the `TrideKitScene` to show (attached when set; another
- *     scene later — or the same one again — is drawn by a fresh Filament engine on the same surface).
+ *   - `FilamentSurfaceView(context, backend, surface)`; `surfaceKind`; `scene` — the `TrideKitScene` to show
+ *     (attached when set; another scene later — or the same one again — is drawn by a fresh Filament engine on
+ *     the same surface).
  *   - `renderPolicy` — `ON_DEMAND` (frames only when the bridge `needsRender`, the default) or `CONTINUOUS`.
  *   - `backend` — the one in use (`VULKAN` / `OPENGL`); `frameCount` / `onFrameDrawn`; `dispose` (a View host
  *     calls it; `TrideSceneView` does it itself).
+ *   - `pixelCopy(bitmap, listener, handler)` — the scene's last frame (`PixelCopy` of either surface).
  *   - `pixelScale` — drawable pixels per dp (`null` = the screen's): a soft scene at 2 on a 3× phone draws
  *     44 % of the pixels; the compositor scales the buffer up.
  *   - `orbitFreeCamera` / `useSceneCamera` — look around with the view's own camera, and back.
@@ -22,6 +24,12 @@
  *     `TrideSceneView` hands what the setter throws to its `onLoadError` instead).
  *
  * Non-obvious constraints:
+ *   - Surface: a `TextureView` composes with the views around it — a scene with a transparent
+ *     background shows the app under it, and the app's views over it; a `SurfaceView` is its own layer, a
+ *     transparent one is put on top of the window (`setZOrderOnTop`, Filament's `UiHelper`): what is under it
+ *     shows, nothing of the app lies over it. The surface is opaque unless the scene's frame is transparent
+ *     (`UiHelper.setOpaque` before `attachTo`, the swap chain `CONFIG_TRANSPARENT`); a scene with the other
+ *     flag gets a new surface (a new `UiHelper` and child view) before it is attached.
  *   - Backend: `Backend.AUTO` = Vulkan on a device that declares Vulkan 1.1 hardware on Android 10+,
  *     OpenGL ES otherwise and on the emulator. A Vulkan driver that fails inside Filament aborts the
  *     process (a native check, not an exception), so the choice is made before the engine exists;
@@ -32,6 +40,9 @@
  *     buffer's pixels per dp with every resize (the density, or the pixel scale).
  *   - One scene per engine (a bridge builds one scene for its lifetime): setting a scene on a view whose engine
  *     already took one disposes that engine and builds the next on the surface it drew to (`replaceBridge`).
+ *   - A resize to another size makes the swap chain again on the same surface (`SwapChainSize`): Vulkan on
+ *     Android reads the window's size from what the surface cached before the resize, so the frame after a
+ *     turn was drawn at the size of the orientation before. Both backends take the one path.
  *   - Everything runs on the main thread (Choreographer, touch, Filament calls).
  *   - A render rate skips vsyncs by elapsed time: a skipped vsync neither ticks nor draws (it only polls the
  *     drawn-frame fence). Above the screen's rate = every vsync; 0 or less = the default and one diagnostic.
@@ -43,12 +54,18 @@ package studio.tride.kit
 
 import android.content.Context
 import android.content.pm.PackageManager
+import android.graphics.Bitmap
 import android.os.Build
+import android.os.Handler
 import android.util.Log
 import android.view.Choreographer
 import android.view.MotionEvent
+import android.view.PixelCopy
 import android.view.Surface
 import android.view.SurfaceView
+import android.view.TextureView
+import android.view.View
+import android.widget.FrameLayout
 import com.google.android.filament.Engine
 import com.google.android.filament.Fence
 import com.google.android.filament.android.UiHelper
@@ -60,10 +77,14 @@ private const val TAG = "tride.view"
 public class FilamentSurfaceView @JvmOverloads constructor(
     context: Context,
     backend: Backend = Backend.AUTO,
-) : SurfaceView(context) {
+    /** What the scene is drawn into: a `TextureView` (default) or a `SurfaceView` — see the file's notes. */
+    public val surfaceKind: SurfaceKind = SurfaceKind.TEXTURE_VIEW,
+) : FrameLayout(context) {
 
     public enum class Backend { AUTO, VULKAN, OPENGL }
     public enum class RenderPolicy { ON_DEMAND, CONTINUOUS }
+    /** `TEXTURE_VIEW` composes with the app's views; `SURFACE_VIEW` is its own layer (a transparent one on top). */
+    public enum class SurfaceKind { TEXTURE_VIEW, SURFACE_VIEW }
 
     internal var bridge: FilamentSceneBridge
         private set
@@ -74,11 +95,19 @@ public class FilamentSurfaceView @JvmOverloads constructor(
     /** The swap chain's buffer in pixels (the last `onResized`); 0 before the first. */
     private var bufferWidth = 0
     private var bufferHeight = 0
+    /** The window size the swap chain was made for: a resize to another makes it again. */
+    private val swapChainSize = SwapChainSize()
 
     /** The backend the engine runs on: `VULKAN` or `OPENGL` (never `AUTO`). */
     public val backend: Backend
         get() = if (bridge.backend == Engine.Backend.VULKAN) Backend.VULKAN else Backend.OPENGL
-    private val uiHelper = UiHelper(UiHelper.ContextErrorPolicy.DONT_CHECK)
+    private var uiHelper = UiHelper(UiHelper.ContextErrorPolicy.DONT_CHECK)
+    /** The child the scene is drawn into ([surfaceKind]); made again for a scene of the other opacity. */
+    private lateinit var target: View
+    /** The surface's opacity — what `uiHelper` was attached with. */
+    private var opaque = true
+    /** The window `UiHelper` handed over last; `null` while there is none. */
+    private var currentSurface: Surface? = null
     private val choreographer = Choreographer.getInstance()
     private var attachedToWindow = false
     private var disposed = false
@@ -175,6 +204,9 @@ public class FilamentSurfaceView @JvmOverloads constructor(
             if (value == null) return
             if (bridgeUsed) replaceBridge()
             bridgeUsed = true
+            // The surface's opacity is the scene's (static per scene): another one gets a new surface first.
+            val wantOpaque = !value.drawsTransparent()
+            if (wantOpaque != opaque) makeSurface(wantOpaque)
             // The view's knobs before the attach: the first frame is drawn with them.
             renderOverrides?.let { value.setRenderOverrides(it) }
             try {
@@ -201,7 +233,8 @@ public class FilamentSurfaceView @JvmOverloads constructor(
         bridge.dispose()
         bridge = FilamentSceneBridge(requestedBackend)
         bridgeUsed = false
-        if (uiHelper.isReadyToRender) bridge.attachSurface(holder.surface, uiHelper.swapChainFlags)
+        val surface = currentSurface
+        if (surface != null && uiHelper.isReadyToRender) bridge.attachSurface(surface, uiHelper.swapChainFlags)
         if (bufferWidth > 0 && bufferHeight > 0) bridge.resize(bufferWidth, bufferHeight, pixelsPerDp(bufferWidth))
     }
 
@@ -217,23 +250,84 @@ public class FilamentSurfaceView @JvmOverloads constructor(
         }
         requestedBackend = requested
         bridge = FilamentSceneBridge(requested)
-        uiHelper.renderCallback = object : UiHelper.RendererCallback {
-            override fun onNativeWindowChanged(surface: Surface) {
-                bridge.attachSurface(surface, uiHelper.swapChainFlags)
-            }
-            override fun onDetachedFromSurface() {
-                bridge.detachSurface()
-            }
-            override fun onResized(width: Int, height: Int) {
-                bufferWidth = width
-                bufferHeight = height
-                bridge.resize(width, height, pixelsPerDp(width))
-                reportSize()
+        Log.i(TAG, "FilamentSurfaceView: backend=${bridge.backend} (requested $requested) surface=$surfaceKind hardware=${Build.HARDWARE}")
+    }
+
+    private val surfaceCallback = object : UiHelper.RendererCallback {
+        override fun onNativeWindowChanged(surface: Surface) {
+            currentSurface = surface
+            bridge.attachSurface(surface, uiHelper.swapChainFlags)
+            swapChainSize.made()
+        }
+        override fun onDetachedFromSurface() {
+            swapChainSize.gone()
+            currentSurface = null
+            bridge.detachSurface()
+        }
+        override fun onResized(width: Int, height: Int) {
+            bufferWidth = width
+            bufferHeight = height
+            // The swap chain made for the size before would draw this frame at that size (`SwapChainSize`). A
+            // TextureView's `UiHelper` hands the window over again after a resize itself.
+            val stale = swapChainSize.resized(width, height)
+            val surface = currentSurface
+            if (stale && surfaceKind == SurfaceKind.SURFACE_VIEW && surface != null) bridge.attachSurface(surface, uiHelper.swapChainFlags)
+            bridge.resize(width, height, pixelsPerDp(width))
+            reportSize()
+        }
+    }
+
+    private fun newTarget(): View = when (surfaceKind) {
+        SurfaceKind.TEXTURE_VIEW -> TextureView(context)
+        SurfaceKind.SURFACE_VIEW -> SurfaceView(context)
+    }
+
+    /**
+     * `uiHelper` on [view] with the view's opacity, then [view] into the layout: a `SurfaceView`'s z-order
+     * (`setZOrderOnTop`, set by `attachTo`) holds only when set before the view reaches the window.
+     */
+    private fun attachSurface(view: View) {
+        uiHelper.isOpaque = opaque
+        uiHelper.renderCallback = surfaceCallback
+        when (view) {
+            is TextureView -> uiHelper.attachTo(view)
+            is SurfaceView -> uiHelper.attachTo(view)
+        }
+        addView(view, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
+    }
+
+    /** A new surface of the given opacity: the old one leaves Filament (its swap chain first) and the layout. */
+    private fun makeSurface(opaque: Boolean) {
+        uiHelper.detach()
+        removeView(target)
+        this.opaque = opaque
+        uiHelper = UiHelper(UiHelper.ContextErrorPolicy.DONT_CHECK)
+        target = newTarget()
+        attachSurface(target)
+        applyPixelScale()
+        Log.i(TAG, "FilamentSurfaceView: ${if (opaque) "opaque" else "transparent"} $surfaceKind for the scene")
+    }
+
+    /** The swap chain's buffer in pixels, as `UiHelper` last reported it (checks). */
+    internal val bufferSize: Pair<Int, Int> get() = bufferWidth to bufferHeight
+
+    /**
+     * The scene's last frame into [bitmap] (the view's size; the app's views around it are not in it): `PixelCopy`
+     * from a `SurfaceView`, the `TextureView`'s own copy (`getBitmap`, on [handler]'s thread) — [listener] hears
+     * `PixelCopy.SUCCESS` or why not. The view is no `SurfaceView` itself: a host reads its frames here.
+     */
+    public fun pixelCopy(bitmap: Bitmap, listener: PixelCopy.OnPixelCopyFinishedListener, handler: Handler) {
+        when (val v = target) {
+            is SurfaceView -> PixelCopy.request(v, bitmap, listener, handler)
+            is TextureView -> handler.post {
+                if (!v.isAvailable) listener.onPixelCopyFinished(PixelCopy.ERROR_SOURCE_NO_DATA)
+                else { v.getBitmap(bitmap); listener.onPixelCopyFinished(PixelCopy.SUCCESS) }
             }
         }
-        uiHelper.attachTo(this)
-        Log.i(TAG, "FilamentSurfaceView: backend=${bridge.backend} (requested $requested) hardware=${Build.HARDWARE}")
     }
+
+    /** The surface is opaque (the shown scene's frame has no alpha); checks. */
+    internal val surfaceOpaque: Boolean get() = opaque
 
     private val frameCallback = object : Choreographer.FrameCallback {
         override fun doFrame(frameTimeNanos: Long) {
@@ -279,6 +373,9 @@ public class FilamentSurfaceView @JvmOverloads constructor(
         if (loopStood) {
             loopStood = false
             scene?.takeUnless { it.isClosed }?.loopResumed()
+            // Back on screen, one frame at least: a SurfaceView's new surface asked for it by itself, a TextureView
+            // keeps its surface across a stop and would show the old frame until the scene next moves.
+            bridge.needsRender = true
         }
         choreographer.postFrameCallback(frameCallback)
     }
@@ -315,9 +412,10 @@ public class FilamentSurfaceView @JvmOverloads constructor(
         val density = resources.displayMetrics.density
         val scale = pixelScale?.takeIf { it < density }
         if (scale == null) {
-            if (uiHelper.desiredWidth > 0) {
-                uiHelper.setDesiredSize(0, 0)
-                holder.setSizeFromLayout()
+            if (uiHelper.desiredWidth > 0) when (val v = target) {
+                is SurfaceView -> { uiHelper.setDesiredSize(0, 0); v.holder.setSizeFromLayout() }
+                // A TextureView's buffer is set, not followed: the layout's size, kept at each size change.
+                else -> uiHelper.setDesiredSize(width, height)
             }
             return
         }
@@ -394,6 +492,12 @@ public class FilamentSurfaceView @JvmOverloads constructor(
             s.pointer(step.phase, lastX, lastY)
         }
         return true
+    }
+
+    // The first surface, last: the callbacks above must exist before `UiHelper` can call them.
+    init {
+        target = newTarget()
+        attachSurface(target)
     }
 
     private companion object {

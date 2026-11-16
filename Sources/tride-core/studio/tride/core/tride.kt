@@ -995,8 +995,6 @@ internal interface UniffiLib : Library {
     ): Unit
     fun uniffi_tride_ffi_fn_method_tridescene_asset_bytes(`ptr`: Pointer,`uri`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
-    fun uniffi_tride_ffi_fn_method_tridescene_background_color(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
-    ): RustBuffer.ByValue
     fun uniffi_tride_ffi_fn_method_tridescene_begin_audio(`ptr`: Pointer,`input`: RustBuffer.ByValue,`sampleRate`: Int,`channels`: Short,`kind`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): Unit
     fun uniffi_tride_ffi_fn_method_tridescene_bind_input(`ptr`: Pointer,`input`: RustBuffer.ByValue,`source`: RustBuffer.ByValue,`mapping`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
@@ -1022,6 +1020,8 @@ internal interface UniffiLib : Library {
     fun uniffi_tride_ffi_fn_method_tridescene_end_audio(`ptr`: Pointer,`input`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): Unit
     fun uniffi_tride_ffi_fn_method_tridescene_environment(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
+    ): RustBuffer.ByValue
+    fun uniffi_tride_ffi_fn_method_tridescene_environment_frame(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
     fun uniffi_tride_ffi_fn_method_tridescene_fire_trigger(`ptr`: Pointer,`name`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): Unit
@@ -1329,8 +1329,6 @@ internal interface UniffiLib : Library {
     ): Short
     fun uniffi_tride_ffi_checksum_method_tridescene_asset_bytes(
     ): Short
-    fun uniffi_tride_ffi_checksum_method_tridescene_background_color(
-    ): Short
     fun uniffi_tride_ffi_checksum_method_tridescene_begin_audio(
     ): Short
     fun uniffi_tride_ffi_checksum_method_tridescene_bind_input(
@@ -1356,6 +1354,8 @@ internal interface UniffiLib : Library {
     fun uniffi_tride_ffi_checksum_method_tridescene_end_audio(
     ): Short
     fun uniffi_tride_ffi_checksum_method_tridescene_environment(
+    ): Short
+    fun uniffi_tride_ffi_checksum_method_tridescene_environment_frame(
     ): Short
     fun uniffi_tride_ffi_checksum_method_tridescene_fire_trigger(
     ): Short
@@ -1555,9 +1555,6 @@ private fun uniffiCheckApiChecksums(lib: UniffiLib) {
     if (lib.uniffi_tride_ffi_checksum_method_tridescene_asset_bytes() != 57501.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_tride_ffi_checksum_method_tridescene_background_color() != 61595.toShort()) {
-        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
-    }
     if (lib.uniffi_tride_ffi_checksum_method_tridescene_begin_audio() != 28566.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
@@ -1594,7 +1591,10 @@ private fun uniffiCheckApiChecksums(lib: UniffiLib) {
     if (lib.uniffi_tride_ffi_checksum_method_tridescene_end_audio() != 19419.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_tride_ffi_checksum_method_tridescene_environment() != 44967.toShort()) {
+    if (lib.uniffi_tride_ffi_checksum_method_tridescene_environment() != 39062.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_tride_ffi_checksum_method_tridescene_environment_frame() != 21429.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_tride_ffi_checksum_method_tridescene_fire_trigger() != 21272.toShort()) {
@@ -2263,14 +2263,6 @@ public interface TrideSceneInterface {
     fun `assetBytes`(`uri`: kotlin.String): kotlin.ByteArray?
     
     /**
-     * The scene's background behind everything when no skybox is drawn — no environment, or
-     * `background_visible: false`: linear RGB, length 3, the schema's grey when not
-     * authored. Separate from [`Self::environment`], which is `None` exactly when this matters
-     * most. Its animation arrives as `/environment_settings/background_color` mutations.
-     */
-    fun `backgroundColor`(): List<kotlin.Double>
-    
-    /**
      * Start audio input `input` (a slug: the scene reads it as `audio.<input>.<probe>`):
      * interleaved `f32` PCM of `channels` channels at `sample_rate` Hz. Starting a begun input
      * again drops what it had.
@@ -2368,13 +2360,19 @@ public interface TrideSceneInterface {
     fun `endAudio`(`input`: kotlin.String)
     
     /**
-     * Authored HDR environment from `manifest.scene.environment` +
-     * `manifest.environment_settings`. `None` when the
-     * scene declares no environment. Byte-faithful with the manifest; the iOS
-     * bridge enumerates at load to build the Filament `IndirectLight` + skybox
-     * (preset → bundled KTX, custom → `.trd` `assets/ibl/<uid>_*.ktx`).
+     * The map that lights the scene, as the native hosts read it until they draw
+     * [`Self::environment_frame`]: the frame's light when it is a map, with the
+     * Euler rotation of the environment it comes from; `None` when no map lights the scene. The
+     * hosts enumerate it at load to build the Filament `IndirectLight` + skybox (preset →
+     * bundled KTX, custom → `.trd` `assets/ibl/<uid>_*.ktx`).
      */
     fun `environment`(): TrideEnvironmentDescriptor?
+    
+    /**
+     * What the scene's environments light and show now — read at load and after a
+     * mutation under the environment's pointers. `None` only when the scene's lock is poisoned.
+     */
+    fun `environmentFrame`(): TrideEnvironmentFrame?
     
     /**
      * Alias for [`Self::trigger`] — editor naming; `trigger` kept for existing Swift.
@@ -2948,24 +2946,6 @@ open class TrideScene: Disposable, AutoCloseable, TrideSceneInterface {
 
     
     /**
-     * The scene's background behind everything when no skybox is drawn — no environment, or
-     * `background_visible: false`: linear RGB, length 3, the schema's grey when not
-     * authored. Separate from [`Self::environment`], which is `None` exactly when this matters
-     * most. Its animation arrives as `/environment_settings/background_color` mutations.
-     */override fun `backgroundColor`(): List<kotlin.Double> {
-            return FfiConverterSequenceDouble.lift(
-    callWithPointer {
-    uniffiRustCall() { _status ->
-    UniffiLib.INSTANCE.uniffi_tride_ffi_fn_method_tridescene_background_color(
-        it, _status)
-}
-    }
-    )
-    }
-    
-
-    
-    /**
      * Start audio input `input` (a slug: the scene reads it as `audio.<input>.<probe>`):
      * interleaved `f32` PCM of `channels` channels at `sample_rate` Hz. Starting a begun input
      * again drops what it had.
@@ -3184,16 +3164,32 @@ open class TrideScene: Disposable, AutoCloseable, TrideSceneInterface {
 
     
     /**
-     * Authored HDR environment from `manifest.scene.environment` +
-     * `manifest.environment_settings`. `None` when the
-     * scene declares no environment. Byte-faithful with the manifest; the iOS
-     * bridge enumerates at load to build the Filament `IndirectLight` + skybox
-     * (preset → bundled KTX, custom → `.trd` `assets/ibl/<uid>_*.ktx`).
+     * The map that lights the scene, as the native hosts read it until they draw
+     * [`Self::environment_frame`]: the frame's light when it is a map, with the
+     * Euler rotation of the environment it comes from; `None` when no map lights the scene. The
+     * hosts enumerate it at load to build the Filament `IndirectLight` + skybox (preset →
+     * bundled KTX, custom → `.trd` `assets/ibl/<uid>_*.ktx`).
      */override fun `environment`(): TrideEnvironmentDescriptor? {
             return FfiConverterOptionalTypeTrideEnvironmentDescriptor.lift(
     callWithPointer {
     uniffiRustCall() { _status ->
     UniffiLib.INSTANCE.uniffi_tride_ffi_fn_method_tridescene_environment(
+        it, _status)
+}
+    }
+    )
+    }
+    
+
+    
+    /**
+     * What the scene's environments light and show now — read at load and after a
+     * mutation under the environment's pointers. `None` only when the scene's lock is poisoned.
+     */override fun `environmentFrame`(): TrideEnvironmentFrame? {
+            return FfiConverterOptionalTypeTrideEnvironmentFrame.lift(
+    callWithPointer {
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_tride_ffi_fn_method_tridescene_environment_frame(
         it, _status)
 }
     }
@@ -5198,25 +5194,19 @@ public object FfiConverterTypeTrideDynamicResolutionOptions: FfiConverterRustBuf
 
 
 /**
- * Authored HDR-environment descriptor returned by [`TrideScene::environment`].
+ * The lighting map returned by [`TrideScene::environment`] — the form the native hosts read until
+ * they draw [`TrideScene::environment_frame`].
  *
- * Projects `manifest.scene.environment` (which environment) + the optional
- * `manifest.environment_settings` (how it renders) into one flat record the
- * iOS bridge consumes at load. `kind` stringifies the
- * [`tride_schema::Environment`] discriminant (mirrors `light_type` / camera
- * `kind`); `name` carries the preset registry name (`kind == "preset"`) or
- * the custom retained-blob uid (`kind == "custom"`) — the bridge resolves the
- * former from bundled `runtime-assets`, the latter from the `.trd`'s
- * `assets/ibl/<uid>_*.ktx`. `rotation` is **Euler XYZ radians**;
- * Euler→rotation-matrix happens at the Swift boundary, never here. When
- * `environment_settings` is absent the authored baseline falls back to the
- * schema defaults (identity rotation, Filament default intensity, visible
- * skybox). `None` from `environment()` means the scene authored no
- * environment.
+ * The scene's light when a map lights it (the top environment with «lights»): `kind`
+ * `"preset" | "custom"`; `name` the preset registry name or the custom retained-blob uid — the
+ * bridge resolves the former from bundled `runtime-assets`, the latter from the `.trd`'s
+ * `assets/ibl/<uid>_*.ktx`. `rotation` is that environment's **Euler XYZ radians**;
+ * Euler→rotation-matrix happens at the host boundary. `background_visible`: that map is the
+ * shown picture. `None` when no map lights the scene (a colour, or nothing).
  */
 data class TrideEnvironmentDescriptor (
     /**
-     * Stringified [`tride_schema::Environment`] discriminant (`"preset" | "custom"`).
+     * The map's source kind (`"preset" | "custom"`).
      */
     var `kind`: kotlin.String, 
     /**
@@ -5232,7 +5222,7 @@ data class TrideEnvironmentDescriptor (
      */
     var `intensity`: kotlin.Double, 
     /**
-     * Whether the skybox background renders (`environment_settings.background_visible`).
+     * Whether the map is the shown picture behind the scene.
      */
     var `backgroundVisible`: kotlin.Boolean
 ) {
@@ -5268,6 +5258,145 @@ public object FfiConverterTypeTrideEnvironmentDescriptor: FfiConverterRustBuffer
             FfiConverterSequenceDouble.write(value.`rotation`, buf)
             FfiConverterDouble.write(value.`intensity`, buf)
             FfiConverterBoolean.write(value.`backgroundVisible`, buf)
+    }
+}
+
+
+
+/**
+ * What the scene's environments light and show now — [`TrideScene::environment_frame`].
+ */
+data class TrideEnvironmentFrame (
+    var `light`: TrideEnvironmentLight, 
+    var `sky`: TrideSkyStack, 
+    /**
+     * What glass refracts: `sky` with its bottom shown layer opaque.
+     */
+    var `glass`: TrideSkyStack, 
+    /**
+     * The frame has alpha — static for the scene.
+     */
+    var `transparent`: kotlin.Boolean
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeTrideEnvironmentFrame: FfiConverterRustBuffer<TrideEnvironmentFrame> {
+    override fun read(buf: ByteBuffer): TrideEnvironmentFrame {
+        return TrideEnvironmentFrame(
+            FfiConverterTypeTrideEnvironmentLight.read(buf),
+            FfiConverterTypeTrideSkyStack.read(buf),
+            FfiConverterTypeTrideSkyStack.read(buf),
+            FfiConverterBoolean.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: TrideEnvironmentFrame) = (
+            FfiConverterTypeTrideEnvironmentLight.allocationSize(value.`light`) +
+            FfiConverterTypeTrideSkyStack.allocationSize(value.`sky`) +
+            FfiConverterTypeTrideSkyStack.allocationSize(value.`glass`) +
+            FfiConverterBoolean.allocationSize(value.`transparent`)
+    )
+
+    override fun write(value: TrideEnvironmentFrame, buf: ByteBuffer) {
+            FfiConverterTypeTrideEnvironmentLight.write(value.`light`, buf)
+            FfiConverterTypeTrideSkyStack.write(value.`sky`, buf)
+            FfiConverterTypeTrideSkyStack.write(value.`glass`, buf)
+            FfiConverterBoolean.write(value.`transparent`, buf)
+    }
+}
+
+
+
+/**
+ * The environment light: `kind` `"none" | "color" | "map"`; `rgb` for a colour (its `sh0`, with a
+ * 1×1 cube of it), `source` for a map; `lux` the `IndirectLight` intensity; `rotation`
+ * column-major 3×3.
+ */
+data class TrideEnvironmentLight (
+    var `kind`: kotlin.String, 
+    var `rgb`: List<kotlin.Double>, 
+    var `source`: TrideEnvironmentSourceRef?, 
+    var `lux`: kotlin.Double, 
+    var `rotation`: List<kotlin.Double>
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeTrideEnvironmentLight: FfiConverterRustBuffer<TrideEnvironmentLight> {
+    override fun read(buf: ByteBuffer): TrideEnvironmentLight {
+        return TrideEnvironmentLight(
+            FfiConverterString.read(buf),
+            FfiConverterSequenceDouble.read(buf),
+            FfiConverterOptionalTypeTrideEnvironmentSourceRef.read(buf),
+            FfiConverterDouble.read(buf),
+            FfiConverterSequenceDouble.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: TrideEnvironmentLight) = (
+            FfiConverterString.allocationSize(value.`kind`) +
+            FfiConverterSequenceDouble.allocationSize(value.`rgb`) +
+            FfiConverterOptionalTypeTrideEnvironmentSourceRef.allocationSize(value.`source`) +
+            FfiConverterDouble.allocationSize(value.`lux`) +
+            FfiConverterSequenceDouble.allocationSize(value.`rotation`)
+    )
+
+    override fun write(value: TrideEnvironmentLight, buf: ByteBuffer) {
+            FfiConverterString.write(value.`kind`, buf)
+            FfiConverterSequenceDouble.write(value.`rgb`, buf)
+            FfiConverterOptionalTypeTrideEnvironmentSourceRef.write(value.`source`, buf)
+            FfiConverterDouble.write(value.`lux`, buf)
+            FfiConverterSequenceDouble.write(value.`rotation`, buf)
+    }
+}
+
+
+
+/**
+ * What an environment shows and lights with, flat: `kind` `"color" | "preset" |
+ * "custom"`; `name` the preset name or the custom retained-blob uid (empty for a colour);
+ * `color` linear RGB for a colour (empty otherwise).
+ */
+data class TrideEnvironmentSourceRef (
+    var `kind`: kotlin.String, 
+    var `name`: kotlin.String, 
+    var `color`: List<kotlin.Double>
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeTrideEnvironmentSourceRef: FfiConverterRustBuffer<TrideEnvironmentSourceRef> {
+    override fun read(buf: ByteBuffer): TrideEnvironmentSourceRef {
+        return TrideEnvironmentSourceRef(
+            FfiConverterString.read(buf),
+            FfiConverterString.read(buf),
+            FfiConverterSequenceDouble.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: TrideEnvironmentSourceRef) = (
+            FfiConverterString.allocationSize(value.`kind`) +
+            FfiConverterString.allocationSize(value.`name`) +
+            FfiConverterSequenceDouble.allocationSize(value.`color`)
+    )
+
+    override fun write(value: TrideEnvironmentSourceRef, buf: ByteBuffer) {
+            FfiConverterString.write(value.`kind`, buf)
+            FfiConverterString.write(value.`name`, buf)
+            FfiConverterSequenceDouble.write(value.`color`, buf)
     }
 }
 
@@ -5827,10 +5956,22 @@ data class TrideMaterialGraph (
      */
     var `blending`: kotlin.String, 
     /**
-     * Whether the renderables drawn with it cast shadows: `false` for `"add"` — the host turns
-     * `castShadows` off on every renderable it dresses with this package.
+     * Whether the renderables drawn with it cast shadows: `false` for `"add"` and a shadow
+     * catcher — the host turns `castShadows` off on every renderable it dresses with this package.
      */
     var `castShadows`: kotlin.Boolean, 
+    /**
+     * Whether they receive shadows: `false` for `"add"` only (under VSM / PCSS Filament makes every
+     * receiver a caster) — a shadow catcher receives without casting. The host sets
+     * `receiveShadows` from it, apart from `castShadows`, on every renderable of the package.
+     */
+    var `receiveShadows`: kotlin.Boolean, 
+    /**
+     * It refracts the screen (`refractionMode : screenspace`, glass): the host calls
+     * `setDepthWrite(true)` on every instance of the package, or the background eraser of a
+     * transparent frame wipes it out. An opaque frame draws the same.
+     */
+    var `screenRefraction`: kotlin.Boolean, 
     /**
      * Vertex attributes it reads: `"color"`, `"uv0"`, `"uv1"`.
      */
@@ -5866,6 +6007,8 @@ public object FfiConverterTypeTrideMaterialGraph: FfiConverterRustBuffer<TrideMa
             FfiConverterString.read(buf),
             FfiConverterString.read(buf),
             FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
+            FfiConverterBoolean.read(buf),
             FfiConverterSequenceString.read(buf),
             FfiConverterBoolean.read(buf),
             FfiConverterSequenceTypeTrideMaterialGraphGroup.read(buf),
@@ -5879,6 +6022,8 @@ public object FfiConverterTypeTrideMaterialGraph: FfiConverterRustBuffer<TrideMa
             FfiConverterString.allocationSize(value.`name`) +
             FfiConverterString.allocationSize(value.`blending`) +
             FfiConverterBoolean.allocationSize(value.`castShadows`) +
+            FfiConverterBoolean.allocationSize(value.`receiveShadows`) +
+            FfiConverterBoolean.allocationSize(value.`screenRefraction`) +
             FfiConverterSequenceString.allocationSize(value.`requires`) +
             FfiConverterBoolean.allocationSize(value.`instanceColors`) +
             FfiConverterSequenceTypeTrideMaterialGraphGroup.allocationSize(value.`groups`) +
@@ -5891,6 +6036,8 @@ public object FfiConverterTypeTrideMaterialGraph: FfiConverterRustBuffer<TrideMa
             FfiConverterString.write(value.`name`, buf)
             FfiConverterString.write(value.`blending`, buf)
             FfiConverterBoolean.write(value.`castShadows`, buf)
+            FfiConverterBoolean.write(value.`receiveShadows`, buf)
+            FfiConverterBoolean.write(value.`screenRefraction`, buf)
             FfiConverterSequenceString.write(value.`requires`, buf)
             FfiConverterBoolean.write(value.`instanceColors`, buf)
             FfiConverterSequenceTypeTrideMaterialGraphGroup.write(value.`groups`, buf)
@@ -7838,6 +7985,98 @@ public object FfiConverterTypeTrideSkinPart: FfiConverterRustBuffer<TrideSkinPar
             FfiConverterUInt.write(value.`indexStart`, buf)
             FfiConverterUInt.write(value.`indexCount`, buf)
             FfiConverterSequenceUInt.write(value.`joints`, buf)
+    }
+}
+
+
+
+/**
+ * The one map a shown stack draws.
+ */
+data class TrideSkyMap (
+    var `source`: TrideEnvironmentSourceRef, 
+    /**
+     * Texel multiplier: intensity / 38 400.
+     */
+    var `scale`: kotlin.Double, 
+    /**
+     * How much of what is below it the map covers.
+     */
+    var `alpha`: kotlin.Double, 
+    /**
+     * Column-major 3×3, the map's rotation in the light's world.
+     */
+    var `rotation`: List<kotlin.Double>
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeTrideSkyMap: FfiConverterRustBuffer<TrideSkyMap> {
+    override fun read(buf: ByteBuffer): TrideSkyMap {
+        return TrideSkyMap(
+            FfiConverterTypeTrideEnvironmentSourceRef.read(buf),
+            FfiConverterDouble.read(buf),
+            FfiConverterDouble.read(buf),
+            FfiConverterSequenceDouble.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: TrideSkyMap) = (
+            FfiConverterTypeTrideEnvironmentSourceRef.allocationSize(value.`source`) +
+            FfiConverterDouble.allocationSize(value.`scale`) +
+            FfiConverterDouble.allocationSize(value.`alpha`) +
+            FfiConverterSequenceDouble.allocationSize(value.`rotation`)
+    )
+
+    override fun write(value: TrideSkyMap, buf: ByteBuffer) {
+            FfiConverterTypeTrideEnvironmentSourceRef.write(value.`source`, buf)
+            FfiConverterDouble.write(value.`scale`, buf)
+            FfiConverterDouble.write(value.`alpha`, buf)
+            FfiConverterSequenceDouble.write(value.`rotation`, buf)
+    }
+}
+
+
+
+/**
+ * A shown stack: `over + (1 − over.a) × (alpha × (map × scale, 1) + (1 − alpha) × under)`,
+ * premultiplied RGBA (length 4 each).
+ */
+data class TrideSkyStack (
+    var `map`: TrideSkyMap?, 
+    var `over`: List<kotlin.Double>, 
+    var `under`: List<kotlin.Double>
+) {
+    
+    companion object
+}
+
+/**
+ * @suppress
+ */
+public object FfiConverterTypeTrideSkyStack: FfiConverterRustBuffer<TrideSkyStack> {
+    override fun read(buf: ByteBuffer): TrideSkyStack {
+        return TrideSkyStack(
+            FfiConverterOptionalTypeTrideSkyMap.read(buf),
+            FfiConverterSequenceDouble.read(buf),
+            FfiConverterSequenceDouble.read(buf),
+        )
+    }
+
+    override fun allocationSize(value: TrideSkyStack) = (
+            FfiConverterOptionalTypeTrideSkyMap.allocationSize(value.`map`) +
+            FfiConverterSequenceDouble.allocationSize(value.`over`) +
+            FfiConverterSequenceDouble.allocationSize(value.`under`)
+    )
+
+    override fun write(value: TrideSkyStack, buf: ByteBuffer) {
+            FfiConverterOptionalTypeTrideSkyMap.write(value.`map`, buf)
+            FfiConverterSequenceDouble.write(value.`over`, buf)
+            FfiConverterSequenceDouble.write(value.`under`, buf)
     }
 }
 
@@ -10067,6 +10306,70 @@ public object FfiConverterOptionalTypeTrideEnvironmentDescriptor: FfiConverterRu
 /**
  * @suppress
  */
+public object FfiConverterOptionalTypeTrideEnvironmentFrame: FfiConverterRustBuffer<TrideEnvironmentFrame?> {
+    override fun read(buf: ByteBuffer): TrideEnvironmentFrame? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterTypeTrideEnvironmentFrame.read(buf)
+    }
+
+    override fun allocationSize(value: TrideEnvironmentFrame?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterTypeTrideEnvironmentFrame.allocationSize(value)
+        }
+    }
+
+    override fun write(value: TrideEnvironmentFrame?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterTypeTrideEnvironmentFrame.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterOptionalTypeTrideEnvironmentSourceRef: FfiConverterRustBuffer<TrideEnvironmentSourceRef?> {
+    override fun read(buf: ByteBuffer): TrideEnvironmentSourceRef? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterTypeTrideEnvironmentSourceRef.read(buf)
+    }
+
+    override fun allocationSize(value: TrideEnvironmentSourceRef?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterTypeTrideEnvironmentSourceRef.allocationSize(value)
+        }
+    }
+
+    override fun write(value: TrideEnvironmentSourceRef?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterTypeTrideEnvironmentSourceRef.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
 public object FfiConverterOptionalTypeTrideGeneratedGeometry: FfiConverterRustBuffer<TrideGeneratedGeometry?> {
     override fun read(buf: ByteBuffer): TrideGeneratedGeometry? {
         if (buf.get().toInt() == 0) {
@@ -10505,6 +10808,38 @@ public object FfiConverterOptionalTypeTrideSceneRecord: FfiConverterRustBuffer<T
         } else {
             buf.put(1)
             FfiConverterTypeTrideSceneRecord.write(value, buf)
+        }
+    }
+}
+
+
+
+
+/**
+ * @suppress
+ */
+public object FfiConverterOptionalTypeTrideSkyMap: FfiConverterRustBuffer<TrideSkyMap?> {
+    override fun read(buf: ByteBuffer): TrideSkyMap? {
+        if (buf.get().toInt() == 0) {
+            return null
+        }
+        return FfiConverterTypeTrideSkyMap.read(buf)
+    }
+
+    override fun allocationSize(value: TrideSkyMap?): ULong {
+        if (value == null) {
+            return 1UL
+        } else {
+            return 1UL + FfiConverterTypeTrideSkyMap.allocationSize(value)
+        }
+    }
+
+    override fun write(value: TrideSkyMap?, buf: ByteBuffer) {
+        if (value == null) {
+            buf.put(0)
+        } else {
+            buf.put(1)
+            FfiConverterTypeTrideSkyMap.write(value, buf)
         }
     }
 }

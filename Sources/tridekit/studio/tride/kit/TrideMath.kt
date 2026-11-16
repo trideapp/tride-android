@@ -3,12 +3,10 @@
  * matrices. Euler ↔ quaternion is the core's (`CoreRotation`), a local matrix gltfio's (`LocalMatrix`), never
  * composed here.
  *
- * Contents: `rotateByQuat`, `normalize3`, `decomposeTRS`, `rigid` (a world with its scaling ignored), `eulerXYZToMat3`
- * (IBL rotation).
+ * Contents: `rotateByQuat`, `normalize3`, `decomposeTRS`, `rigid` (a world with its scaling ignored).
  *
  * Non-obvious constraints:
- *   - Quaternions are `[x, y, z, w]` everywhere; Filament's `float[16]` is column-major, and so is the
- *     `float[9]` for `IndirectLight.setRotation`.
+ *   - Quaternions are `[x, y, z, w]` everywhere; Filament's `float[16]` is column-major.
  *   - `decomposeTRS` assumes no shear (glTF node transforms have none).
  */
 package studio.tride.kit
@@ -35,13 +33,6 @@ internal object TrideMath {
         val len = sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2])
         if (len < 1e-12) return doubleArrayOf(0.0, 0.0, -1.0)
         return doubleArrayOf(v[0] / len, v[1] / len, v[2] / len)
-    }
-
-    /** Column-major 3×3 rotation of an XYZ Euler triple (for `IndirectLight.setRotation`). */
-    fun eulerXYZToMat3(e: DoubleArray): FloatArray {
-        val q = CoreRotation.quatOfEulerXYZ(e)
-        val m = LocalMatrix.of(doubleArrayOf(0.0, 0.0, 0.0), q, doubleArrayOf(1.0, 1.0, 1.0))
-        return floatArrayOf(m[0], m[1], m[2], m[4], m[5], m[6], m[8], m[9], m[10])
     }
 
     /** Translation / rotation `[x, y, z, w]` / scale of a column-major TRS matrix (no shear assumed). */

@@ -49,9 +49,14 @@
  *   - Data textures (pulse tables, instance transforms and rows) are staged by a sync and go up only in a
  *     frame Filament draws (`flushDataTextures`): a skipped frame's bytes are replaced by the next sync's,
  *     and the buffers come back through the descriptor's callback (`DataTextureUploads`).
- *   - A renderable wearing an Add package (`TrideMaterialGraph.castShadows` false) neither
- *     casts nor receives shadows (under VSM and PCSS Filament makes every receiver a caster): trunks, file
- *     meshes and batches when built.
+ *   - Shadows are the package table's (`TrideMaterialGraph.castShadows` / `receiveShadows`):
+ *     a renderable wearing an Add package neither casts nor receives (under VSM and PCSS Filament makes
+ *     every receiver a caster), one wearing a shadow catcher receives only — trunks, file meshes and
+ *     batches when built.
+ *   - Glass writes depth, so the background eraser of a transparent frame leaves it: a gltfio
+ *     instance whose material draws with screen-space refraction (`refractionMode` SCREEN_SPACE, transmission /
+ *     volume — `writeDepthIfGlass`), and every instance of a node-material package whose table says it refracts
+ *     the screen (`TrideMaterialGraph.screenRefraction`) get `setDepthWrite(true)`.
  *   - A photo slot is a one-layer array: its placeholder (1 × 1 white without one) or the app's picture —
  *     one texture per `(input, revision, srgb)`, destroyed after the last rebind; later instances bind it too.
  */
@@ -628,6 +633,7 @@ internal class FilamentGenerators(
             return null
         }
         val material = mi.material
+        writeDepthIfGlass(mi)
         // `key` is the constrained one now (a third UV set drops its maps).
         val indices = listOf(
             Triple(key.hasBaseColorTexture, key.baseColorUV, "baseColorIndex"),
@@ -740,8 +746,12 @@ internal class FilamentGenerators(
         var seeded = false
         /** It samples `instanceColors` — a Clone Field on instances. */
         var instanceColors = false
-        /** Renderables wearing it cast shadows; `false` for an Add package. */
+        /** Renderables wearing it cast shadows; `false` for an Add package and a shadow catcher. */
         var castShadows = true
+        /** Renderables wearing it receive shadows; `false` for an Add package only. */
+        var receiveShadows = true
+        /** It refracts the screen (glass, the core's table): its instances write depth. */
+        var screenRefraction = false
         /** The table as last pushed, by uniform name (insertion order). */
         val values = LinkedHashMap<String, FloatArray>()
         val shared = HashMap<String, MaterialInstance>()
@@ -751,11 +761,14 @@ internal class FilamentGenerators(
     /** `slug\u0000family` → its loaded package. */
     private val graphs = HashMap<String, GraphEntry>()
 
-    /**
-     * Whether a renderable wearing `mi` may cast shadows: `false` only for an instance of an Add package.
-     * One that may not neither casts nor receives — under VSM / PCSS Filament makes receivers casters.
-     */
+    /** Whether a renderable wearing `mi` may cast shadows: `false` for an instance of an Add package or a catcher. */
     private fun castsShadows(mi: MaterialInstance): Boolean = graphs.values.none { !it.castShadows && mi in it.live }
+
+    /**
+     * Whether a renderable wearing `mi` may receive shadows: `false` only for an instance of an Add package —
+     * under VSM / PCSS Filament makes receivers casters; a shadow catcher receives without casting.
+     */
+    private fun receivesShadows(mi: MaterialInstance): Boolean = graphs.values.none { !it.receiveShadows && mi in it.live }
 
     private fun graphKeyOf(slug: String, family: String) = "$slug\u0000$family"
     private fun graphFor(slug: String?, family: String): GraphEntry? =
@@ -785,6 +798,15 @@ internal class FilamentGenerators(
         }
     }
 
+    /**
+     * Glass that refracts the screen writes depth: the background eraser of a transparent frame keeps it (gltfio's
+     * `transmission_fade` / `volume_fade` write none). An opaque frame draws the same (research
+     * `rt414-environment-model.md` §7).
+     */
+    private fun writeDepthIfGlass(mi: MaterialInstance) {
+        if (mi.material.refractionMode == Material.RefractionMode.SCREEN_SPACE) mi.setDepthWrite(true)
+    }
+
     /** The values last pushed. */
     private fun applyGraphValues(mi: MaterialInstance, g: GraphEntry) {
         for ((name, v) in g.values) applyGraphValue(mi, g, name, v)
@@ -793,6 +815,8 @@ internal class FilamentGenerators(
     /** A fresh instance of `g`: its arrays and what its slots show now bound, its last values and (on a single object) its seed. */
     private fun newGraphInstance(g: GraphEntry, seed: Float): MaterialInstance {
         val mi = g.material.createInstance()
+        // Glass: the core's table says the package refracts the screen, as on every host.
+        if (g.screenRefraction) mi.setDepthWrite(true)
         for (a in g.arrays) mi.setParameter(a.name, a.texture, a.sampler)
         for (s in g.slots) mi.setParameter(s.placeholder.name, slotTexture(s), s.placeholder.sampler)
         applyGraphValues(mi, g)
@@ -856,6 +880,8 @@ internal class FilamentGenerators(
         val g = GraphEntry(material)
         g.instanceColors = graph.instanceColors
         g.castShadows = graph.castShadows
+        g.receiveShadows = graph.receiveShadows
+        g.screenRefraction = graph.screenRefraction
         for (p in graph.params) {
             if (p.name == "objectSeed") g.seeded = true
             g.lanes[p.name] = when (p.kind) { "float4" -> 4; "float3" -> 3; else -> 1 }
@@ -1569,8 +1595,7 @@ internal class FilamentGenerators(
                 .geometry(0, type, vb, ib, r.start, r.count)
                 .skinning(r.bones)
             s.morph?.let { builder.morphing(it).morphing(0, 0, morphOffset) }
-            val casts = castsShadows(mi)
-            builder.culling(true).castShadows(casts).receiveShadows(casts).build(engine, entity)
+            builder.culling(true).castShadows(castsShadows(mi)).receiveShadows(receivesShadows(mi)).build(engine, entity)
             tm.create(entity)
             tm.setParent(tm.getInstance(entity), tm.getInstance(s.entity))
             scene.addEntity(entity)
@@ -1892,9 +1917,10 @@ internal class FilamentGenerators(
             }
             // gltfio: `skinning(joints)` on the mesh's renderable; the palette comes from the core.
             if (skinMesh) builder.skinning(skinBones)
-            // A pen in an Add package turns the whole renderable's shadows off (receiving too).
-            val shaded = !lines && primitives.all { castsShadows(it.mi) } && parts.all { castsShadows(it.mi) }
-            builder.culling(true).castShadows(shaded).receiveShadows(shaded).build(engine, state.entity)
+            // A pen in an Add package turns the whole renderable's casting and receiving off, a catcher its casting.
+            val casts = !lines && primitives.all { castsShadows(it.mi) } && parts.all { castsShadows(it.mi) }
+            val receives = !lines && primitives.all { receivesShadows(it.mi) } && parts.all { receivesShadows(it.mi) }
+            builder.culling(true).castShadows(casts).receiveShadows(receives).build(engine, state.entity)
             scene.addEntity(state.entity)
             if (state.morph != null) rm.setMorphWeights(rm.getInstance(state.entity), state.morphWeights, 0)
             if (skinMesh) state.skinDraws = listOf(SkinDraw(state.entity, 0, skinBones, false))
@@ -2041,7 +2067,7 @@ internal class FilamentGenerators(
             .boundingBox(batch.bounds)
             .material(0, batch.mi)
             .geometry(0, RenderableManager.PrimitiveType.TRIANGLES, mesh.vb, mesh.ib, 0, mesh.indexCount)
-            .culling(true).castShadows(castsShadows(batch.mi)).receiveShadows(castsShadows(batch.mi))
+            .culling(true).castShadows(castsShadows(batch.mi)).receiveShadows(receivesShadows(batch.mi))
             .instances(batch.count)
             .build(engine, batch.entity)
     }
