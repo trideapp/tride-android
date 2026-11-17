@@ -1,4 +1,4 @@
-# TrideKit for Android — Tride 0.17.0
+# TrideKit for Android — Tride 0.18.0
 
 Plays Tride scenes (`.trd`) in an Android app: the Tride runtime, Filament rendering (Vulkan on a phone,
 OpenGL ES on the emulator) and a Compose view over them. A scene is built in Tride Editor ([tride-editor](https://github.com/trideapp/tride-editor)) and exported
@@ -14,7 +14,7 @@ what is new — `CHANGELOG.md`.
 
 | | |
 |---|---|
-| `maven/` | `studio.tride:tride-core`, `tridekit`, `tridekit-compose` 0.17.0 and the Filament they are built on, `studio.tride.filament:filament-android`, `gltfio-android`, `filament-utils-android` — a Maven repository as a folder, to build with, no token needed |
+| `maven/` | `studio.tride:tride-core`, `tridekit`, `tridekit-compose` 0.18.0 and the Filament they are built on, `studio.tride.filament:filament-android`, `gltfio-android`, `filament-utils-android` — a Maven repository as a folder, to build with, no token needed |
 | GitHub Packages | the same packages as this repository's Maven packages — Gradle fetches them with a GitHub token |
 | Releases | `TridePlayer.apk` — the example player, ready to install |
 | `Sources/` | the libraries' Kotlin sources: `tridekit` (the Filament bridge, `TrideKitScene`), `tridekit-compose` (`TrideSceneView`), `tride-core` (the uniffi binding over the prebuilt runtime `.so`). They also sit beside each AAR as a `-sources.jar` — Android Studio shows them when you jump into the library's code |
@@ -101,7 +101,7 @@ dependencyResolutionManagement {
 
 ```kotlin
 android { defaultConfig { ndk { abiFilters += listOf("arm64-v8a", "x86_64") } } }   // required, see the requirements
-dependencies { implementation("studio.tride:tridekit-compose:0.17.0") }
+dependencies { implementation("studio.tride:tridekit-compose:0.18.0") }
 ```
 
 3. Put a `.trd` exported from Tride Editor into `src/main/assets/` and show it:
