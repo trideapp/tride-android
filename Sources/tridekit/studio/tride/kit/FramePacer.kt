@@ -4,6 +4,10 @@
  * Internal API:
  *   - `RenderRate.resolve(requested)` — `null` keeps the default; 0 or less is refused (the default stays,
  *     the view reports it once); a rate above the screen's is the screen's (a vsync wakes at most once).
+ *   - `RenderRate.filamentPace(drawRate, displayHz)` — what Filament hears of the pace, so its dynamic resolution
+ *     aims at `1000 × interval / refreshRate` ms, the frame time the view really has: the display's refresh rate
+ *     (whole Hz; 0 or less = 60) and `interval = round(refreshRate / drawRate)`, 1…255; `drawRate` = the render
+ *     rate, else 60 — no rate keeps Filament's 16.7 ms on 60 and 120 Hz screens. The rule of TrideKit iOS.
  *   - `FramePacer(fps)` — `admit(frameTimeNanos)`: a wake is due once the time since the last one reaches the
  *     rate's interval less half a display frame, so 30 on a 60 Hz or a 120 Hz screen wakes every second or
  *     fourth vsync, steadily, through jitter; the leftover is kept within half an interval (a rate that does
@@ -18,6 +22,8 @@
  */
 package studio.tride.kit
 
+import kotlin.math.roundToInt
+
 internal object RenderRate {
     data class Resolved(val fps: Int?, val refused: Boolean)
 
@@ -25,6 +31,13 @@ internal object RenderRate {
         requested == null -> Resolved(null, false)
         requested > 0 -> Resolved(requested, false)
         else -> Resolved(null, true)
+    }
+
+    fun filamentPace(drawRate: Int?, displayHz: Float): Pair<Float, Int> {
+        val refresh = displayHz.roundToInt().takeIf { it > 0 } ?: 60
+        val draws = maxOf(1, drawRate ?: 60)
+        val interval = (refresh.toDouble() / draws).roundToInt().coerceIn(1, 255)
+        return refresh.toFloat() to interval
     }
 
     fun refusalMessage(requested: Int): String =

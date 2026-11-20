@@ -16,7 +16,8 @@
  *     44 % of the pixels; the compositor scales the buffer up.
  *   - `orbitFreeCamera` / `useSceneCamera` — look around with the view's own camera, and back.
  *   - `preferredFps` — frames drawn a second, and the most the scene's logic is woken (it still steps 60 Hz);
- *     `null` = every vsync, as before; changes live (`FramePacer`).
+ *     `null` = every vsync, as before; changes live (`FramePacer`); Filament's dynamic resolution aims at the
+ *     rate's frame time on this display (`RenderRate.filamentPace`; no rate = 16.7 ms, as before).
  *   - `renderOverrides` — the host's render knobs over the scene's render settings, handed to every scene the
  *     view shows (`TrideKitScene.setRenderOverrides`); changes live, on the same view and scene.
  *   - Every scene is built from the core's scene record; one the core hands no record of is not shown
@@ -43,7 +44,8 @@
  *   - A resize to another size makes the swap chain again on the same surface (`SwapChainSize`): Vulkan on
  *     Android reads the window's size from what the surface cached before the resize, so the frame after a
  *     turn was drawn at the size of the orientation before. Both backends take the one path.
- *   - Everything runs on the main thread (Choreographer, touch, Filament calls).
+ *   - Choreographer, touch and every Filament call run on the main thread; the scene's tick runs on TrideKit's
+ *     preparation thread and lands one frame later (`TrideKitScene.tickMode`).
  *   - A render rate skips vsyncs by elapsed time: a skipped vsync neither ticks nor draws (it only polls the
  *     drawn-frame fence). Above the screen's rate = every vsync; 0 or less = the default and one diagnostic.
  *   - The frame loop (the scene's tick and the frame) runs while the view is attached to a window that is
@@ -141,6 +143,7 @@ public class FilamentSurfaceView @JvmOverloads constructor(
                 scene?.takeUnless { it.isClosed }?.reportFromView("preferredFps", message) ?: Log.w(TAG, message)
             }
             pacer.setRate(rate.fps)
+            handPace()
         }
     private val pacer = FramePacer()
     private var refusedRateReported = false
@@ -232,6 +235,7 @@ public class FilamentSurfaceView @JvmOverloads constructor(
         sceneCamera = null
         bridge.dispose()
         bridge = FilamentSceneBridge(requestedBackend)
+        handPace()
         bridgeUsed = false
         val surface = currentSurface
         if (surface != null && uiHelper.isReadyToRender) bridge.attachSurface(surface, uiHelper.swapChainFlags)
@@ -387,8 +391,16 @@ public class FilamentSurfaceView @JvmOverloads constructor(
         choreographer.removeFrameCallback(frameCallback)
     }
 
+    /** The render rate and this display's refresh rate to Filament (`RenderRate.filamentPace`). */
+    private fun handPace() {
+        val (hz, interval) = RenderRate.filamentPace(pacer.fps, display?.refreshRate ?: 60f)
+        bridge.setFrameRate(hz, interval)
+    }
+
     override fun onAttachedToWindow() {
         super.onAttachedToWindow()
+        // The display is known from here: its refresh rate reaches Filament.
+        handPace()
         attachedToWindow = true
         startLoop()
     }

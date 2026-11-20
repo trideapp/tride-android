@@ -6,7 +6,8 @@
  *
  * Public API:
  *   - `attachSurface` (also to make the swap chain again on a resized surface) / `detachSurface` / `resize`,
- *     `loadPlaces(places)`, `render(frameTimeNanos)`, `dispose`.
+ *     `loadPlaces(places)`, `render(frameTimeNanos)`, `setFrameRate(refreshRate, interval)` (the view's pace for
+ *     Filament's dynamic resolution, `RenderRate.filamentPace`), `dispose`.
  *   - Nodes: `entityForPlace`, `setNodeTRS`, `setNodeVisible`, `morphTargetCount`, `setMorphWeights`,
  *     `worldTransform` (checks).
  *   - Lights: `addLights`, `setLight*`; cameras: `addCameras`, `setActiveCamera`, `setCamera*`,
@@ -358,6 +359,36 @@ internal class FilamentSceneBridge(
 
     /** Holds Filament's driver thread for [nanos] — a driver stuck in a long frame, as SwiftShader's first (tests). */
     internal fun stallDriver(nanos: Long) { if (!disposed) renderer.pauseRenderThread(nanos) }
+
+    /** The display refresh rate and frame interval Filament holds (`setFrameRate`); 60 and 1 = its own defaults. */
+    var displayRefreshRate: Float = 60f
+        private set
+    var frameInterval: Int = 1
+        private set
+
+    /**
+     * The view's pace (`RenderRate.filamentPace`): dynamic resolution aims at `1000 × interval / refreshRate` ms of
+     * GPU time. Kept for the bridge's life (a surface going and coming keeps it).
+     */
+    fun setFrameRate(refreshRate: Float, interval: Int) {
+        val hz = if (refreshRate > 0f) refreshRate else 60f
+        val n = interval.coerceIn(1, 255)
+        if ((hz == displayRefreshRate && n == frameInterval) || disposed) return
+        displayRefreshRate = hz
+        frameInterval = n
+        renderer.setDisplayInfo(Renderer.DisplayInfo().apply { this.refreshRate = hz })
+        // Every field but the interval at the engine's own defaults (the Java class's differ from them).
+        renderer.setFrameRateOptions(Renderer.FrameRateOptions().apply {
+            this.interval = n.toFloat()
+            headRoomRatio = 0f
+            scaleRate = 1f / 8f
+            history = 15
+        })
+    }
+
+    /** The frame-rate options and refresh rate the renderer holds now (checks). */
+    internal val frameRateOptionsShown: Renderer.FrameRateOptions get() = renderer.frameRateOptions
+    internal val displayInfoShown: Renderer.DisplayInfo get() = renderer.displayInfo
 
     /** One frame when a swap chain is attached; `false` when Filament skipped it (too soon after the last). */
     fun render(frameTimeNanos: Long): Boolean {

@@ -959,6 +959,8 @@ internal open class UniffiVTableCallbackInterfaceTrideStateChangeListener(
 
 
 
+
+
 // A JNA Library to expose the extern-C FFI definitions.
 // This is an implementation detail which will be called internally by the public API.
 
@@ -1096,6 +1098,8 @@ internal interface UniffiLib : Library {
     fun uniffi_tride_ffi_fn_method_tridescene_scene_record(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
     fun uniffi_tride_ffi_fn_method_tridescene_scroll(`ptr`: Pointer,`offset`: Double,`extent`: Double,`sceneTop`: Double,`sceneHeight`: Double,uniffi_out_err: UniffiRustCallStatus, 
+    ): Unit
+    fun uniffi_tride_ffi_fn_method_tridescene_seal_inputs(`ptr`: Pointer,uniffi_out_err: UniffiRustCallStatus, 
     ): Unit
     fun uniffi_tride_ffi_fn_method_tridescene_set_audio_time(`ptr`: Pointer,`input`: RustBuffer.ByValue,`audibleTimeS`: Double,`gain`: Float,uniffi_out_err: UniffiRustCallStatus, 
     ): Unit
@@ -1431,6 +1435,8 @@ internal interface UniffiLib : Library {
     ): Short
     fun uniffi_tride_ffi_checksum_method_tridescene_scroll(
     ): Short
+    fun uniffi_tride_ffi_checksum_method_tridescene_seal_inputs(
+    ): Short
     fun uniffi_tride_ffi_checksum_method_tridescene_set_audio_time(
     ): Short
     fun uniffi_tride_ffi_checksum_method_tridescene_set_binding(
@@ -1615,7 +1621,7 @@ private fun uniffiCheckApiChecksums(lib: UniffiLib) {
     if (lib.uniffi_tride_ffi_checksum_method_tridescene_generator_module_transforms() != 36317.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_tride_ffi_checksum_method_tridescene_get_binding() != 7342.toShort()) {
+    if (lib.uniffi_tride_ffi_checksum_method_tridescene_get_binding() != 44634.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_tride_ffi_checksum_method_tridescene_image_failed() != 28791.toShort()) {
@@ -1708,10 +1714,13 @@ private fun uniffiCheckApiChecksums(lib: UniffiLib) {
     if (lib.uniffi_tride_ffi_checksum_method_tridescene_scroll() != 8139.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
+    if (lib.uniffi_tride_ffi_checksum_method_tridescene_seal_inputs() != 23511.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
     if (lib.uniffi_tride_ffi_checksum_method_tridescene_set_audio_time() != 47024.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
-    if (lib.uniffi_tride_ffi_checksum_method_tridescene_set_binding() != 35949.toShort()) {
+    if (lib.uniffi_tride_ffi_checksum_method_tridescene_set_binding() != 53321.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_tride_ffi_checksum_method_tridescene_set_changed_only() != 20563.toShort()) {
@@ -2414,7 +2423,9 @@ public interface TrideSceneInterface {
     fun `generatorModuleTransforms`(`id`: kotlin.String, `symbol`: kotlin.String): kotlin.ByteArray
     
     /**
-     * Read the current view-model value (see [`tride_runtime_api::RuntimeHandle::get_binding`]).
+     * Read the current view-model value (see [`tride_runtime_api::RuntimeHandle::get_binding`]):
+     * the last write still waiting for the tick, else the scene's as the last finished tick left
+     * it (with what landed since) — never waiting for a tick in progress.
      */
     fun `getBinding`(`name`: kotlin.String): TrideValue
     
@@ -2635,6 +2646,17 @@ public interface TrideSceneInterface {
     fun `scroll`(`offset`: kotlin.Double, `extent`: kotlin.Double, `sceneTop`: kotlin.Double, `sceneHeight`: kotlin.Double)
     
     /**
+     * Everything the host wrote so far — bindings, triggers, batches, pointer events — belongs
+     * to the next [`Self::tick`]; what it writes after this call waits for the tick after. Call
+     * it, once per tick, on the thread that orders the ticks when the tick itself runs on another
+     * thread; a tick with no seal pending takes everything written before it.
+     *
+     * # Errors
+     * [`TrideError::Internal`] only on mutex poisoning.
+     */
+    fun `sealInputs`()
+    
+    /**
      * What sounds now — call it every frame before `tick`: `input` is heard at
      * `audible_time_s` of its audio time (a track: position minus the output latency), its
      * probes times `gain`.
@@ -2646,7 +2668,8 @@ public interface TrideSceneInterface {
     fun `setAudioTime`(`input`: kotlin.String, `audibleTimeS`: kotlin.Double, `gain`: kotlin.Float)
     
     /**
-     * Set a named view-model binding to the given typed value.
+     * Set a named view-model binding to the given typed value. Checked now, it waits in the
+     * inbox for the next [`Self::tick`] — never for a tick in progress.
      *
      * # Errors
      * Returns [`TrideError::InvalidBinding`] when the name is unknown
@@ -3298,7 +3321,9 @@ open class TrideScene: Disposable, AutoCloseable, TrideSceneInterface {
 
     
     /**
-     * Read the current view-model value (see [`tride_runtime_api::RuntimeHandle::get_binding`]).
+     * Read the current view-model value (see [`tride_runtime_api::RuntimeHandle::get_binding`]):
+     * the last write still waiting for the tick, else the scene's as the last finished tick left
+     * it (with what landed since) — never waiting for a tick in progress.
      */
     @Throws(TrideException::class)override fun `getBinding`(`name`: kotlin.String): TrideValue {
             return FfiConverterTypeTrideValue.lift(
@@ -3831,6 +3856,27 @@ open class TrideScene: Disposable, AutoCloseable, TrideSceneInterface {
 
     
     /**
+     * Everything the host wrote so far — bindings, triggers, batches, pointer events — belongs
+     * to the next [`Self::tick`]; what it writes after this call waits for the tick after. Call
+     * it, once per tick, on the thread that orders the ticks when the tick itself runs on another
+     * thread; a tick with no seal pending takes everything written before it.
+     *
+     * # Errors
+     * [`TrideError::Internal`] only on mutex poisoning.
+     */
+    @Throws(TrideException::class)override fun `sealInputs`()
+        = 
+    callWithPointer {
+    uniffiRustCallWithError(TrideException) { _status ->
+    UniffiLib.INSTANCE.uniffi_tride_ffi_fn_method_tridescene_seal_inputs(
+        it, _status)
+}
+    }
+    
+    
+
+    
+    /**
      * What sounds now — call it every frame before `tick`: `input` is heard at
      * `audible_time_s` of its audio time (a track: position minus the output latency), its
      * probes times `gain`.
@@ -3852,7 +3898,8 @@ open class TrideScene: Disposable, AutoCloseable, TrideSceneInterface {
 
     
     /**
-     * Set a named view-model binding to the given typed value.
+     * Set a named view-model binding to the given typed value. Checked now, it waits in the
+     * inbox for the next [`Self::tick`] — never for a tick in progress.
      *
      * # Errors
      * Returns [`TrideError::InvalidBinding`] when the name is unknown

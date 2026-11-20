@@ -1,10 +1,12 @@
 /**
  * `TrideKitScene` — a `.trd` scene for an Android host: the runtime (`studio.tride.core.TrideScene`) ticks,
  * `FrameDispatcher` routes the frame to a `FilamentSceneBridge`; the host writes facts and hears events /
- * state changes AFTER the frame reached Filament.
+ * state changes AFTER the frame that shows them reached Filament.
  *
  * Public API:
  *   - `TrideKitScene(trdBytes)`, `buildInfo`, `play` / `pause` / `isPlaying` / `reset` / `tickOnce(dtMs)`, `advance` → `TrideKitAdvance`, `close`.
+ *   - `tickMode` / `defaultTickMode` (`TrideKitTickMode`) — the view's steps on the preparation thread (the default)
+ *     or on the main thread (the old mode, kept for one release); `preparationReport()` (opt-in `TrideKitChecks`).
  *   - `setBinding` / `getBinding` / `trigger` / `readProperty` / `availableBindings` / `validateBindings`
  *     (`TrideValue`), `inputsJson()` / `setInputs(json, strict)` → `TrideKitInputsReport` (the scene's inputs for a
  *     settings screen and a checked batch write; kind `STRING` is text), `currentState`, `layerCount` / `layerId` / `layerName` / `currentState(layerId)`,
@@ -47,6 +49,11 @@
  *     plays on), the live render leaves stay on top, and an on-demand view draws one frame. Cleared over a
  *     scene without render settings, the view draws as a new one (`restoreInitialRenderSettings`).
  *   - A tick after a move of the bridge's own camera sends it with `setViewport` first (Look at Camera tags turn toward it on that tick).
+ *   - The view's steps run on TrideKit's preparation thread (`tickMode`, `ScenePreparation`): a frame of the view
+ *     applies the frame that thread finished, then queues the next tick — the picture one display frame behind.
+ *     Signals reach the handlers on the main thread right after their tick's changes reached the bridge, in the
+ *     runtime's order. `tickOnce`, `advance`, `reset`, `pause`, `pick`, an attach and new render knobs apply the
+ *     frame in flight first (`settleFrame`); `MAIN_THREAD` is the old path.
  *   - Threads: the constructor and the runtime-only calls (`setBinding` / `getBinding` / `trigger` / `setInputs` /
  *     `inputsJson` / `readProperty` / `currentState` / layers / `bindInput` / `availableBindings` / `validateBindings` /
  *     `dragAxes`) may run on any thread (the runtime locks itself); every call that steps, draws, touches, subscribes or closes is the
@@ -235,6 +242,15 @@ public class TrideKitScene(trdBytes: ByteArray) : AutoCloseable {
         public val buildInfo: TrideKitBuildInfo
             get() = native { studio.tride.core.buildInfo() }.let { TrideKitBuildInfo(it.version, it.commit, it.formatVersion) }
 
+        /**
+         * The tick mode of every scene made from now on: [TrideKitTickMode.BACKGROUND] by default. One line takes an
+         * app back to the main-thread tick for this release — `TrideKitScene.defaultTickMode =
+         * TrideKitTickMode.MAIN_THREAD` before the first scene loads; the switch goes in 0.20.0.
+         */
+        @JvmStatic
+        @Volatile
+        public var defaultTickMode: TrideKitTickMode = TrideKitTickMode.BACKGROUND
+
         /** The ABIs `libtride_ffi.so` is built for. */
         private val SUPPORTED_ABIS = listOf("arm64-v8a", "x86_64")
 
@@ -284,13 +300,10 @@ public class TrideKitScene(trdBytes: ByteArray) : AutoCloseable {
     /** The bridge this scene draws through now (`null` while no live view shows it). */
     internal val attachedBridge: FilamentSceneBridge? get() = bridge
 
-    // Signals of the running tick, drained after dispatch.
-    private sealed interface Signal {
-        class Event(val event: TrideKitEvent) : Signal
-        class State(val change: TrideKitStateChange) : Signal
-        class Problem(val diagnostic: TrideKitDiagnostic) : Signal
-    }
-    private val inbox = ArrayList<Signal>()
+    // Signals of the frame being shown, drained after its dispatch (main thread).
+    private val inbox = ArrayList<SceneSignal>()
+    /** The runtime's listener calls, on whichever thread ticks; moved to [inbox] with their frame. */
+    private val coreSignals = SceneSignals()
     private val eventHandlers = LinkedHashMap<Long, (TrideKitEvent) -> Unit>()
     private val stateHandlers = LinkedHashMap<Long, (TrideKitStateChange) -> Unit>()
     private val diagnosticHandlers = LinkedHashMap<Long, (TrideKitDiagnostic) -> Unit>()
@@ -313,6 +326,28 @@ public class TrideKitScene(trdBytes: ByteArray) : AutoCloseable {
     internal val isClosed: Boolean get() = closed
     public var isPlaying: Boolean = false
         private set
+
+    /**
+     * Which thread ticks this scene: [TrideKitTickMode.BACKGROUND] — TrideKit's preparation thread, the frame shown
+     * one display frame later; [TrideKitTickMode.MAIN_THREAD] — the main thread, as before 0.19.0. Starts at
+     * [defaultTickMode]. A change applies the frame in flight first and takes effect at the next frame. Main thread.
+     */
+    public var tickMode: TrideKitTickMode = defaultTickMode
+        set(value) {
+            checkMain()
+            if (value == field) return
+            settleFrame()
+            field = value
+        }
+
+    /** The frame the preparation thread is making; at most one per scene. */
+    private var inFlight: PreparedFrame? = null
+    /** Time of the frames that found [inFlight] unfinished — handed to the next tick. */
+    private var carriedMs = 0f
+    /** Counters of the background tick ([preparationReport]). */
+    private val preparation = PreparationCounters()
+    /** The core's reads the preparation thread made for the frame being applied; `null` = the core itself. */
+    private var pulls: CorePulls? = null
 
     /**
      * Why the scene is drawn only in part — a `requires` Android does not draw yet, a material without values the
@@ -372,6 +407,71 @@ public class TrideKitScene(trdBytes: ByteArray) : AutoCloseable {
     private val assetBytesCache = HashMap<String, ByteArray?>()
     private fun cachedAssetBytes(uri: String): ByteArray? = assetBytesCache.getOrPut(uri) { core.assetBytes(uri) }
 
+    // The core's reads of a frame: from the preparation thread's pulls while a prepared frame is applied.
+    private fun coreGeometry(id: String) =
+        (pulls.let { if (it != null) it.generatedGeometry(id, core) else core.generatedGeometry(id) }).also { trace("geometry $id", it) }
+    private fun coreTransforms(id: String, symbol: String) =
+        (pulls.let { if (it != null) it.moduleTransforms(id, symbol, core) else core.generatorModuleTransforms(id, symbol) }).also { trace("transforms $id $symbol", it) }
+    private fun coreColors(id: String, symbol: String) =
+        (pulls.let { if (it != null) it.moduleColors(id, symbol, core) else core.generatorModuleColors(id, symbol) }).also { trace("rows $id $symbol", it) }
+    private fun coreFlow(id: String) =
+        (pulls.let { if (it != null) it.flow(id, core) else core.generatorFlow(id) }).also { trace("flow $id", it) }
+    private fun coreDatablock(uid: String) =
+        (pulls.let { if (it != null) it.datablockMesh(uid, core) else core.datablockMesh(uid) }).also { trace("datablock $uid", it) }
+    private fun coreDeformed(uid: String) =
+        (pulls.let { if (it != null) it.deformedMesh(uid, core) else core.deformedMesh(uid) }).also { trace("deformed $uid", it) }
+    private fun coreEnvironment() =
+        (pulls.let { if (it != null) it.environmentFrame(core) else core.environmentFrame() }).also { trace("environment", it) }
+    private fun coreParams(slug: String) =
+        (pulls.let { if (it != null) it.params(slug, core) else core.materialParams(slug) }).also { trace("params $slug", it) }
+    private fun coreGraph(slug: String, family: String) =
+        (pulls.let { if (it != null) it.graph(slug, family, core) else core.materialGraph(slug, family) }).also { trace("graph $slug $family", it) }
+    private fun coreGraphValues(slug: String, family: String) =
+        (pulls.let { if (it != null) it.values(slug, family, core) else core.materialGraphValues(slug, family) }).also { trace("values $slug $family", it) }
+
+    /**
+     * Everything a frame hands the bridge from the runtime, as text, in order (checks: the two tick modes against
+     * each other); `null` = not traced.
+     */
+    internal var frameTrace: ((String) -> Unit)? = null
+
+    private fun trace(what: String, value: Any?) {
+        val sink = frameTrace ?: return
+        fun text(v: Any?): String = when (v) {
+            null -> "-"
+            is ByteArray -> "bytes ${v.size} ${v.contentHashCode()}"
+            is TrideGeneratedGeometry -> "mesh ${v.epoch} ${v.topology} " + listOf(v.positions, v.normals, v.uvs, v.flow, v.colors, v.indices, v.tangents).joinToString { text(it) }
+            is TrideDatablockMesh -> "datablock ${v.contentHash} " + listOf(v.positions, v.normals, v.indices).joinToString { text(it) }
+            is studio.tride.core.TridePulseTable -> "pulses ${v.count} ${text(v.rows)}"
+            is TrideBonePalette -> "palette ${v.mesh} ${v.part} ${text(v.bones)} ${v.bounds}"
+            is TrideMutation -> "${v.pointer}=${v.valueJson}"
+            is List<*> -> v.joinToString(prefix = "[", postfix = "]") { text(it) }
+            else -> v.toString()
+        }
+        sink("$what: ${text(value)}")
+    }
+
+    /** What this scene draws, for the preparation thread's reads of the next frame. */
+    private fun pullPlan(bridge: FilamentSceneBridge): PullPlan {
+        val gen = bridge.generators
+        val rows = HashSet<String>()
+        if (gen != null) for ((id, modules) in generatorModules) for (binding in modules) {
+            if (moduleParts[binding.datablock].orEmpty().any { gen.samplesInstanceColors(moduleMaterialSlug[it.uid]) }) {
+                rows += CorePulls.key(id, binding.symbol)
+            }
+        }
+        return PullPlan(
+            modules = HashMap(generatorModules),
+            rowSymbols = rows,
+            registered = HashSet(moduleParts.keys),
+            uploadedTrunk = HashMap(uploadedTrunkEpoch),
+            pulsed = HashSet(generatorPulseLook.keys),
+            parametric = parametricNodes,
+            graphFamilies = materialGraphFamilies.mapValues { it.value.toList() },
+            slotSlugs = gen?.photoSlotSlugs()?.toHashSet() ?: emptySet(),
+        )
+    }
+
     private val resolver = object : NodeResolver {
         override fun resolveManifestNode(nodeId: String): String? = if (baselines.containsKey(nodeId)) nodeId else null
         override fun gltfIndexForNode(nodeId: String): Int? = if (baselines.containsKey(nodeId)) nodeIdToIndex[nodeId] else null
@@ -386,12 +486,12 @@ public class TrideKitScene(trdBytes: ByteArray) : AutoCloseable {
     init {
         core.subscribeEvents(object : TrideOutgoingEventListener {
             override fun onOutgoingEvent(name: String, payload: Map<String, TrideValue>) {
-                inbox += Signal.Event(TrideKitEvent(name, payload))
+                coreSignals.add(SceneSignal.Event(TrideKitEvent(name, payload)))
             }
         })
         core.subscribeLayerStateChanges(object : TrideLayerStateChangeListener {
             override fun onLayerStateChange(change: TrideStateChange) {
-                inbox += Signal.State(TrideKitStateChange(change.layerIndex.toInt(), change.layerId, change.from, change.to, change.transition))
+                coreSignals.add(SceneSignal.State(TrideKitStateChange(change.layerIndex.toInt(), change.layerId, change.from, change.to, change.transition)))
             }
         })
         Log.i(TAG, "loaded TrideScene from ${trdBytes.size} bytes")
@@ -509,6 +609,7 @@ public class TrideKitScene(trdBytes: ByteArray) : AutoCloseable {
         checkOpenOnMain()
         val next = overrides?.copy()
         if (next == knobs) return
+        settleFrame()
         knobs = next
         bridge?.let { applyRenderSettings(it, fresh = false) }
     }
@@ -618,6 +719,8 @@ public class TrideKitScene(trdBytes: ByteArray) : AutoCloseable {
     /** The nodes under a point (dp from the view's top-left) that a scene listener targets (empty when no listener does). */
     public fun pick(x: Float, y: Float): List<TrideKitHit> {
         checkOpenOnMain()
+        // Pick what the view shows: the frame in flight lands first.
+        settleFrame()
         pushViewport()
         return core.pick(x, y).map { TrideKitHit(it.node, it.instanceKey, it.instanceIndex?.toInt(), it.distance) }
     }
@@ -818,6 +921,9 @@ public class TrideKitScene(trdBytes: ByteArray) : AutoCloseable {
     /** Stop ticking; the last frame stays. Allowed after [close]. */
     public fun pause() {
         checkMain()
+        // The frame in flight is shown: a paused scene stands where its last tick left it.
+        settleFrame()
+        carriedMs = 0f
         isPlaying = false
         lastFrameNanos = 0L
     }
@@ -827,7 +933,7 @@ public class TrideKitScene(trdBytes: ByteArray) : AutoCloseable {
         if (!isPlaying || closed) return
         val dtMs = if (lastFrameNanos == 0L) 1000f / 60f else min((frameTimeNanos - lastFrameNanos) / 1_000_000f, maxDtMs)
         lastFrameNanos = frameTimeNanos
-        tickAndDispatch(dtMs)
+        wake(dtMs, maxDtMs)
     }
 
     /**
@@ -836,6 +942,7 @@ public class TrideKitScene(trdBytes: ByteArray) : AutoCloseable {
      */
     internal fun loopResumed() {
         lastFrameNanos = 0L
+        carriedMs = 0f
         if (!isPlaying) return
         try {
             core.resume()
@@ -843,7 +950,12 @@ public class TrideKitScene(trdBytes: ByteArray) : AutoCloseable {
     }
 
     /** One tick of [dtMs] milliseconds, shown as a frame (playing or not). */
-    public fun tickOnce(dtMs: Float) { checkOpenOnMain(); tickAndDispatch(dtMs) }
+    public fun tickOnce(dtMs: Float) {
+        checkOpenOnMain()
+        // Synchronous whatever the mode: the frame in flight lands, then this step on this thread.
+        settleFrame()
+        tickAndDispatch(dtMs)
+    }
 
     /**
      * Back to the scene's start: every state machine to its initial state (entered again), every binding
@@ -852,6 +964,7 @@ public class TrideKitScene(trdBytes: ByteArray) : AutoCloseable {
      */
     public fun reset() {
         checkOpenOnMain()
+        settleFrame()
         core.reset()
         // The runtime forgot what it handed out: this frame is whole.
         tickAndDispatch(0f, complete = true)
@@ -863,9 +976,11 @@ public class TrideKitScene(trdBytes: ByteArray) : AutoCloseable {
      */
     public fun advance(scriptJson: String): TrideKitAdvance {
         checkOpenOnMain()
+        settleFrame()
         audio.hear()
         pushViewport(onlyIfMoved = true)
         val result = core.advance(scriptJson)
+        inbox += coreSignals.drain()
         publishDiagnostics(result.tick.diagnostics)
         val b = bridge
         if (b != null) {
@@ -907,6 +1022,8 @@ public class TrideKitScene(trdBytes: ByteArray) : AutoCloseable {
     /** Load the scene into `bridge` and apply the manifest: lights, cameras, visibility, env, settings. */
     internal fun attach(bridge: FilamentSceneBridge, assets: AssetManager?) {
         checkOpenOnMain()
+        // The frame in flight was prepared for the view before (or none): it lands there first.
+        settleFrame()
         this.bridge = bridge
         bridge.onLoadProblem = ::reportLoad
         // The new renderables hold no weights yet: forget the old vectors before this attach's frames fill them.
@@ -1114,7 +1231,7 @@ public class TrideKitScene(trdBytes: ByteArray) : AutoCloseable {
 
     /** The runtime's uniforms of `slug` on `family` at the scene's current values that moved since the last push, to every instance. */
     private fun pushMaterialGraphValues(slug: String, family: String, gen: FilamentGenerators) {
-        val moved = sentUniforms.changes(slug, family, core.materialGraphValues(slug, family))
+        val moved = sentUniforms.changes(slug, family, coreGraphValues(slug, family))
         if (moved.isNotEmpty()) gen.updateMaterialGraph(slug, family, moved)
     }
 
@@ -1178,7 +1295,7 @@ public class TrideKitScene(trdBytes: ByteArray) : AutoCloseable {
         val gen = bridge.generators ?: return
         for (n in parametricNodes) if (n.datablockUid == uid) uploadParametricNode(n, gen)
         val before = moduleParts[uid] ?: return
-        val mesh = core.datablockMesh(uid) ?: return
+        val mesh = coreDatablock(uid) ?: return
         val parts = registerModuleMesh(uid, mesh, gen)
         if (parts == null) { warnOnce(TrideKitDiagnosticKind.LOAD, "$uid", "bridge rejected the rebuilt module mesh $uid"); return }
         // A group that went (a fillet switched off): its batches hide.
@@ -1234,7 +1351,7 @@ public class TrideKitScene(trdBytes: ByteArray) : AutoCloseable {
             warnOnce(TrideKitDiagnosticKind.LOAD, "${n.nodeUid}", "parametric node ${n.nodeUid} is no place of the scene — not drawn"); return
         }
         // A node a deformer reaches draws its bent mesh, else its recipe's.
-        val mesh = core.deformedMesh(n.nodeUid) ?: core.datablockMesh(n.datablockUid) ?: run {
+        val mesh = coreDeformed(n.nodeUid) ?: coreDatablock(n.datablockUid) ?: run {
             warnOnce(TrideKitDiagnosticKind.LOAD, "${n.datablockUid}", "parametric node ${n.nodeUid}: datablock ${n.datablockUid} could not be built — not drawn"); return
         }
         val id = "parametric:${n.nodeUid}"
@@ -1287,9 +1404,10 @@ public class TrideKitScene(trdBytes: ByteArray) : AutoCloseable {
         if (trunkEpoch != null && uploadedTrunkEpoch[id] == trunkEpoch) { syncModuleInstances(id, bridge); return }
         val debug = Log.isLoggable(TAG, Log.DEBUG)
         val t0 = if (debug) System.nanoTime() else 0L
-        val geometry = core.generatedGeometry(id) ?: run { reportLoad(id, "generator '$id' has no geometry (its evaluation failed?)"); return }
+        val geometry = coreGeometry(id) ?: run { reportLoad(id, "generator '$id' has no geometry (its evaluation failed?)"); return }
         val t1 = if (debug) System.nanoTime() else 0L
-        if (gen.upsertGeneratedMesh(id, geometry, hostFor(id))) {
+        // The streams the preparation thread packed: only the upload is left here.
+        if (gen.upsertGeneratedMesh(id, geometry, hostFor(id), pulls?.packed?.get(id))) {
             if (trunkEpoch != null) uploadedTrunkEpoch[id] = trunkEpoch else uploadedTrunkEpoch.remove(id)
         } else {
             reportLoad(id, "generated mesh '$id' could not be drawn")
@@ -1304,17 +1422,17 @@ public class TrideKitScene(trdBytes: ByteArray) : AutoCloseable {
         val modules = generatorModules[id] ?: return
         for (binding in modules) {
             if (moduleParts[binding.datablock] == null) {
-                val mesh = core.datablockMesh(binding.datablock) ?: run {
+                val mesh = coreDatablock(binding.datablock) ?: run {
                     warnOnce(TrideKitDiagnosticKind.LOAD, "$id:${binding.symbol}", "generator '$id' module '${binding.symbol}': datablock ${binding.datablock} could not be decoded — not rendered"); continue
                 }
                 if (registerModuleMesh(binding.datablock, mesh, gen) == null) { warnOnce(TrideKitDiagnosticKind.LOAD, "${binding.datablock}", "bridge rejected module mesh ${binding.datablock}"); continue }
             }
-            val transforms = core.generatorModuleTransforms(id, binding.symbol)
+            val transforms = coreTransforms(id, binding.symbol)
             // One batch per draw part over the same transforms and rows ([moduleParts]).
             for (part in moduleParts[binding.datablock].orEmpty()) {
                 val slug = moduleMaterialSlug[part.uid]
                 // The instance rows travel with the transforms, pulled only where the material samples them.
-                val colors = if (gen.samplesInstanceColors(slug)) core.generatorModuleColors(id, binding.symbol) else null
+                val colors = if (gen.samplesInstanceColors(slug)) coreColors(id, binding.symbol) else null
                 val placed = gen.syncModuleInstances(id, binding.symbol + part.suffix, part.uid, transforms, colors, generatorHostIndex[id],
                     PaletteLook(slug, moduleMaterialParams[part.uid]))
                 debugLog { "generator '$id' module '${binding.symbol + part.suffix}': $placed/${transforms.size / 64} instances" }
@@ -1325,7 +1443,7 @@ public class TrideKitScene(trdBytes: ByteArray) : AutoCloseable {
     private fun uploadGeneratorFlow(id: String, bridge: FilamentSceneBridge) {
         val gen = bridge.generators ?: return
         if (generatorPulseLook[id] == null) return
-        val table = core.generatorFlow(id)
+        val table = coreFlow(id)
         if (!gen.setGeneratedMeshFlow(id, table) && table != null) warnOnce(TrideKitDiagnosticKind.LOAD, "$id", "bridge rejected the pulse table of '$id' (trunk not pulsed?)")
     }
 
@@ -1339,7 +1457,7 @@ public class TrideKitScene(trdBytes: ByteArray) : AutoCloseable {
         // A node material's uniforms come from the runtime's table.
         materialGraphFamilies[slug]?.forEach { pushMaterialGraphValues(slug, it, gen) }
         if (!lookWritten && slug in paletteSent) return
-        val params = core.materialParams(slug) ?: run { warnOnce(TrideKitDiagnosticKind.LOAD, "$slug", "palette material '$slug' is animated but not in the scene — write ignored"); return }
+        val params = coreParams(slug) ?: run { warnOnce(TrideKitDiagnosticKind.LOAD, "$slug", "palette material '$slug' is animated but not in the scene — write ignored"); return }
         if (paletteSent[slug] == params) return
         paletteSent[slug] = params
         for ((id, material) in generatorMaterialSlug) if (material == slug) generatorMaterialParams[id] = params
@@ -1359,7 +1477,7 @@ public class TrideKitScene(trdBytes: ByteArray) : AutoCloseable {
         if (withSlots.isEmpty()) return
         for (slug in slugs?.filter { it in withSlots } ?: withSlots) {
             for (family in materialGraphFamilies[slug].orEmpty()) {
-                val groups = core.materialGraph(slug, family)?.groups ?: continue
+                val groups = coreGraph(slug, family)?.groups ?: continue
                 // A slot that moved may leave a picture nothing binds: its input is pruned after the tick.
                 if (gen.refreshPictures(slug, family, groups)) groups.mapNotNullTo(picturesToPrune) { it.hostImage }
             }
@@ -1435,8 +1553,12 @@ public class TrideKitScene(trdBytes: ByteArray) : AutoCloseable {
         // The camera the view draws through, before the tick: tagged objects turn toward it this frame.
         pushViewport(onlyIfMoved = true)
         val result = try { core.tick(dtMs) } catch (e: Exception) {
+            inbox += coreSignals.drain()
             reportNow(TrideKitDiagnosticKind.RUNTIME, "tick", e.message ?: e.toString()); return
         }
+        // The listeners fired during the tick: this frame's signals, ahead of its problems.
+        inbox += coreSignals.drain()
+        trace("tick", result.mutations); trace("palettes", result.bonePalettes)
         publishDiagnostics(result.diagnostics)
         val b = bridge
         if (b != null && (result.mutations.isNotEmpty() || complete)) {
@@ -1448,6 +1570,135 @@ public class TrideKitScene(trdBytes: ByteArray) : AutoCloseable {
         prunePictures()
         deliverSignals()
     }
+
+    // ---------------------------------------------------------------------------------------------
+    // The tick off the main thread (BACKGROUND): one frame in flight, applied one wake later
+    // ---------------------------------------------------------------------------------------------
+
+    /**
+     * A frame of the view. [TrideKitTickMode.BACKGROUND]: the frame the preparation thread finished is applied — its
+     * changes to the bridge, then its signals to the handlers — and the next tick is queued; a frame not finished
+     * yet keeps the picture, queues no second tick and hands its time to the next one (capped at two steps).
+     * [TrideKitTickMode.MAIN_THREAD]: the step on this thread, as before.
+     */
+    private fun wake(dtMs: Float, maxStepMs: Float, whilePlaying: Boolean = true) {
+        if (tickMode == TrideKitTickMode.MAIN_THREAD) { tickAndDispatch(dtMs); return }
+        preparation.wakes++
+        inFlight?.let { frame ->
+            if (!frame.isDone) {
+                preparation.unfinished++
+                carriedMs += dtMs
+                return
+            }
+            inFlight = null
+            apply(frame)
+        }
+        // A handler of the frame just shown may have paused the scene: no tick after its pause.
+        if (closed || (whilePlaying && !isPlaying)) return
+        val step = min(dtMs + carriedMs, 2 * maxStepMs)
+        carriedMs = 0f
+        submit(step)
+    }
+
+    /**
+     * Queue a tick: what every sound sounds like and the view's camera go to the runtime's inbox, the seal closes
+     * this tick's inputs (whatever is written after it lands in the next tick), the preparation thread ticks,
+     * routes and reads what the dispatch will need.
+     */
+    private fun submit(dtMs: Float) {
+        tickCount++
+        audio.hear()
+        pushViewport(onlyIfMoved = true)
+        try {
+            core.sealInputs()
+        } catch (e: Exception) { reportNow(TrideKitDiagnosticKind.RUNTIME, "sealInputs", e.message ?: e.toString()) }
+        val frame = PreparedFrame(dtMs)
+        val b = bridge
+        val plan = b?.let(::pullPlan)
+        val route: ((List<TrideMutation>) -> RoutedMutations)? = if (b != null) ::route else null
+        val runtime = core
+        val signals = coreSignals
+        inFlight = frame
+        ScenePreparation.post { frame.prepare(runtime, signals, plan, route) }
+    }
+
+    /**
+     * A frame the preparation thread finished, onto the bridge — the runtime is idle meanwhile (nothing is queued
+     * until this returns). Its signals reach the handlers after its changes reached the bridge.
+     */
+    private fun apply(frame: PreparedFrame) {
+        val start = System.nanoTime()
+        preparation.applied++
+        preparation.tickNs += frame.tickNs
+        preparation.pullNs += frame.pullNs
+        inbox += frame.signals
+        val result = frame.result ?: run {
+            reportNow(TrideKitDiagnosticKind.RUNTIME, "tick", frame.failure?.let { it.message ?: it.toString() } ?: "no tick result")
+            return
+        }
+        trace("tick", result.mutations); trace("palettes", result.bonePalettes)
+        frame.failure?.let { report(TrideKitDiagnosticKind.RUNTIME, "prepare", "the frame's reads failed off the main thread: ${it.message ?: it}") }
+        publishDiagnostics(result.diagnostics)
+        val b = bridge
+        if (b != null && result.mutations.isNotEmpty()) {
+            pulls = frame.pulls
+            try {
+                dispatchRouted(frame.routed ?: route(result.mutations), b, false)
+            } finally {
+                pulls = null
+            }
+            b.needsRender = true
+        }
+        if (b != null) applyBonePalettes(result.bonePalettes, b)
+        preparation.misses += frame.pulls.misses
+        prunePictures()
+        preparation.applyNs += System.nanoTime() - start
+        deliverSignals()
+    }
+
+    /**
+     * The frame in flight, waited for and applied now — before a synchronous step ([tickOnce], [advance], [reset]),
+     * [pause], [pick], an attach, new render knobs, a mode change: what follows sees the runtime and the view in the
+     * same state. A closed scene only waits (nothing is shown any more).
+     */
+    private fun settleFrame() {
+        val frame = inFlight ?: return
+        inFlight = null
+        val start = System.nanoTime()
+        frame.await()
+        preparation.settleWaitNs += System.nanoTime() - start
+        if (!closed) apply(frame)
+    }
+
+    /** A frame is being prepared (tests). */
+    internal val hasFrameInFlight: Boolean get() = inFlight != null
+
+    /** Wait for the frame in flight without applying it — the next frame of the view applies it (tests). */
+    internal fun awaitFrameInFlight() { inFlight?.await() }
+
+    /** One frame of the view with [dtMs], as the view's loop makes it, playing or not (tests). */
+    internal fun wakeOnce(dtMs: Float, maxStepMs: Float = MAX_DT_MS) { checkOpenOnMain(); wake(dtMs, maxStepMs, whilePlaying = false) }
+
+    /**
+     * The background tick's counters since load: frames of the view, frames applied, frames that found the tick
+     * unfinished, runtime reads the frames missed, and ms the preparation thread ticked and read, the main thread
+     * applied and waited. For hosts measuring the scene.
+     */
+    @TrideKitChecks
+    public fun preparationReport(): Map<String, Double> {
+        checkMain()
+        val ms = { ns: Long -> ns / 1e6 }
+        return mapOf(
+            "wakes" to preparation.wakes.toDouble(), "applied" to preparation.applied.toDouble(),
+            "unfinished" to preparation.unfinished.toDouble(), "misses" to preparation.misses.toDouble(),
+            "queueTickMs" to ms(preparation.tickNs), "queuePullMs" to ms(preparation.pullNs),
+            "applyMs" to ms(preparation.applyNs), "settleWaitMs" to ms(preparation.settleWaitNs),
+        )
+    }
+
+    /** The tick's changes decoded and routed (pure: any thread — the node tables it reads change only at an attach). */
+    private fun route(mutations: List<TrideMutation>): RoutedMutations =
+        routeMutations(mutations.map { PointerMutation(it.pointer, decode(it)) }, resolver)
 
     private fun decode(m: TrideMutation): Any? {
         val v = TypedValues.decode(m)
@@ -1473,8 +1724,10 @@ public class TrideKitScene(trdBytes: ByteArray) : AutoCloseable {
     }
     private class Lens { var yfov: Double? = null; var znear: Double? = null; var zfar: Double? = null; var focus: Double? = null; var aperture: Double? = null }
 
-    private fun dispatch(mutations: List<TrideMutation>, bridge: FilamentSceneBridge, complete: Boolean = false) {
-        val routed = routeMutations(mutations.map { PointerMutation(it.pointer, decode(it)) }, resolver)
+    private fun dispatch(mutations: List<TrideMutation>, bridge: FilamentSceneBridge, complete: Boolean = false) =
+        dispatchRouted(route(mutations), bridge, complete)
+
+    private fun dispatchRouted(routed: RoutedMutations, bridge: FilamentSceneBridge, complete: Boolean) {
         for (p in routed.problems) warnOnce(TrideKitDiagnosticKind.POINTER, "${p.pointer}", "${p.pointer}: ${p.message} [${p.code}]")
 
         // Nodes through the pointer grammar into the persistent accumulator.
@@ -1564,7 +1817,7 @@ public class TrideKitScene(trdBytes: ByteArray) : AutoCloseable {
 
         // Environment (the core's frame read again after a write to one), then the animatable render settings
         // (saturation, fog colour, bloom strength, pixelation).
-        if (routed.environment.isNotEmpty()) core.environmentFrame()?.let { bridge.updateEnvironment(it) }
+        if (routed.environment.isNotEmpty()) coreEnvironment()?.let { bridge.updateEnvironment(it) }
         if (routed.renderSettings.isNotEmpty() || complete) {
             val moved = liveRender.fold(routed.renderSettings, complete)
             if (moved.saturation) bridge.setSaturation(liveRender.saturation)
@@ -1625,9 +1878,9 @@ public class TrideKitScene(trdBytes: ByteArray) : AutoCloseable {
         val batch = ArrayList(inbox)
         inbox.clear()
         for (s in batch) when (s) {
-            is Signal.Event -> for (h in eventHandlers.values.toList()) h(s.event)
-            is Signal.State -> for (h in stateHandlers.values.toList()) h(s.change)
-            is Signal.Problem -> for (h in diagnosticHandlers.values.toList()) h(s.diagnostic)
+            is SceneSignal.Event -> for (h in eventHandlers.values.toList()) h(s.event)
+            is SceneSignal.State -> for (h in stateHandlers.values.toList()) h(s.change)
+            is SceneSignal.Problem -> for (h in diagnosticHandlers.values.toList()) h(s.diagnostic)
         }
     }
 
@@ -1659,7 +1912,7 @@ public class TrideKitScene(trdBytes: ByteArray) : AutoCloseable {
         val d = TrideKitDiagnostic(kind, subject, message, code)
         if (!reported.add(d)) return
         if (kind == TrideKitDiagnosticKind.EVALUATION) Log.e("tride.eval", "$subject: $message") else Log.w(TAG, message)
-        inbox += Signal.Problem(d)
+        inbox += SceneSignal.Problem(d)
     }
 
     /** [report] outside a tick: delivered at once. */

@@ -281,11 +281,22 @@ internal class FilamentEnvironment(
         return tex
     }
 
+    /**
+     * The six texels as HALF, the cube's own format (as iOS fills it): a FLOAT upload into RGBA16F takes
+     * Filament 1.77.1's Vulkan blit path, which leaves the image in layout UNDEFINED — its texels may be
+     * lost, and the sky reads the cube even when it shows none (0 × NaN), so the background drew white.
+     */
     private fun fillCube(tex: Texture, rgb: List<Double>) {
-        val bb = ByteBuffer.allocateDirect(6 * 4 * 4).order(ByteOrder.nativeOrder())
-        val fb = bb.asFloatBuffer()
-        repeat(6) { fb.put(floatArrayOf(rgb.getOrElse(0) { 0.0 }.toFloat(), rgb.getOrElse(1) { 0.0 }.toFloat(), rgb.getOrElse(2) { 0.0 }.toFloat(), 1f)) }
-        tex.setImage(engine, 0, 0, 0, 0, 1, 1, 6, Texture.PixelBufferDescriptor(bb, Texture.Format.RGBA, Texture.Type.FLOAT))
+        val bb = ByteBuffer.allocateDirect(6 * 4 * 2).order(ByteOrder.nativeOrder())
+        val texel = shortArrayOf(
+            halfBits(rgb.getOrElse(0) { 0.0 }.toFloat()),
+            halfBits(rgb.getOrElse(1) { 0.0 }.toFloat()),
+            halfBits(rgb.getOrElse(2) { 0.0 }.toFloat()),
+            halfBits(1f),
+        )
+        repeat(6) { texel.forEach(bb::putShort) }
+        bb.flip()
+        tex.setImage(engine, 0, 0, 0, 0, 1, 1, 6, Texture.PixelBufferDescriptor(bb, Texture.Format.RGBA, Texture.Type.HALF))
     }
 
     private fun direct(bytes: ByteArray): ByteBuffer =
@@ -295,4 +306,32 @@ internal class FilamentEnvironment(
         val src = if (values.size >= fallback.size) values else fallback
         return FloatArray(fallback.size) { src[it].toFloat() }
     }
+}
+
+/**
+ * IEEE 754 half-precision bits of [f] (round to nearest even; NaN stays NaN, past 65504 is infinity,
+ * below the half range is zero): `android.util.Half` needs API 26, the kit's floor is 24.
+ */
+internal fun halfBits(f: Float): Short {
+    val bits = java.lang.Float.floatToRawIntBits(f)
+    val sign = (bits ushr 16) and 0x8000
+    val exp = (bits ushr 23) and 0xff
+    val mant = bits and 0x7fffff
+    if (exp == 0xff) return (sign or 0x7c00 or (if (mant != 0) 0x200 else 0)).toShort()
+    val e = exp - 127 + 15
+    if (e >= 0x1f) return (sign or 0x7c00).toShort()
+    if (e <= 0) {
+        if (e < -10) return sign.toShort()
+        val m = mant or 0x800000
+        val shift = 14 - e
+        var half = m ushr shift
+        val rest = m and ((1 shl shift) - 1)
+        val mid = 1 shl (shift - 1)
+        if (rest > mid || (rest == mid && (half and 1) != 0)) half += 1
+        return (sign or half).toShort()
+    }
+    var half = (e shl 10) or (mant ushr 13)
+    val rest = mant and 0x1fff
+    if (rest > 0x1000 || (rest == 0x1000 && (half and 1) != 0)) half += 1
+    return (sign or half).toShort()
 }
