@@ -2,8 +2,8 @@
 
 | | |
 |---|---|
-| Tride commit | `8b2638001` |
-| Date | 2026-11-20 |
+| Tride commit | `91a887dca` |
+| Date | 2026-11-24 |
 | Scene format | 0.78.0 — TrideKit opens `.trd` files of this format and older |
 | Runtime (FFI) | 0.0.83 |
 | Filament | 1.77.1, Tride's build from source (`studio.tride.filament`, in `maven/`) |
