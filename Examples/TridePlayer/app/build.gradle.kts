@@ -38,7 +38,7 @@ kotlin {
 }
 
 dependencies {
-    implementation("studio.tride:tridekit-compose:0.19.1")
+    implementation("studio.tride:tridekit-compose:0.20.0")
     implementation(platform("androidx.compose:compose-bom:2025.06.01"))
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.foundation:foundation")

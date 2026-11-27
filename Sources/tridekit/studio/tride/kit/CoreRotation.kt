@@ -13,7 +13,6 @@
  */
 package studio.tride.kit
 
-import android.util.Log
 import studio.tride.core.eulerToQuat
 import studio.tride.core.quatToEuler
 
@@ -24,7 +23,7 @@ internal object CoreRotation {
     private fun refused(what: String) {
         if (warned) return
         warned = true
-        Log.e("tride.kit", "the core refused $what in the xyz order — this TrideKit was built against another core")
+        TrideLog.error(TrideLog.KIT) { "the core refused $what in the xyz order — this TrideKit was built against another core" }
     }
 
     fun quatOfEulerXYZ(euler: DoubleArray): DoubleArray {

@@ -189,7 +189,7 @@ internal class FilamentPixelation(
         return was
     }
 
-    /** Everything the pass made, its material included — before the scene view and the engine go. */
+    /** Everything the pass made — before the scene view goes; the material is the engine's (`SharedEngine.builtIn`). */
     fun destroy() {
         off()
         for (p in passes) {
@@ -203,7 +203,6 @@ internal class FilamentPixelation(
         engine.destroyVertexBuffer(vertices)
         engine.destroyIndexBuffer(indices)
         engine.destroyTexture(placeholder)
-        engine.destroyMaterial(material)
         engine.destroyCameraComponent(cameraEntity)
         EntityManager.get().destroy(cameraEntity)
     }

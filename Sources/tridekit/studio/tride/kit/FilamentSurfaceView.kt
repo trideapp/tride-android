@@ -6,9 +6,10 @@
  *
  * Public API:
  *   - `FilamentSurfaceView(context, backend, surface)`; `surfaceKind`; `scene` — the `TrideKitScene` to show
- *     (attached when set; another scene later — or the same one again — is drawn by a fresh Filament engine on
- *     the same surface).
- *   - `renderPolicy` — `ON_DEMAND` (frames only when the bridge `needsRender`, the default) or `CONTINUOUS`.
+ *     (attached when set; another scene later — or the same one again — gets a new Filament view and scene on
+ *     the process's shared engine, drawn on the same swap chain).
+ *   - `renderPolicy` — `ON_DEMAND` (frames only when the bridge `needsRender`, the default) or `CONTINUOUS`
+ *     (every frame while the scene plays or temporal anti-aliasing is on; a paused scene draws what changes).
  *   - `backend` — the one in use (`VULKAN` / `OPENGL`); `frameCount` / `onFrameDrawn`; `dispose` (a View host
  *     calls it; `TrideSceneView` does it itself).
  *   - `pixelCopy(bitmap, listener, handler)` — the scene's last frame (`PixelCopy` of either surface).
@@ -39,8 +40,13 @@
  *     tap tolerance is in points, the unit iOS and the browser send — in px a finger's jitter on a 3×
  *     screen turned a tap into a drag. Pixelation's block side is in dp too: the bridge hears the
  *     buffer's pixels per dp with every resize (the density, or the pixel scale).
- *   - One scene per engine (a bridge builds one scene for its lifetime): setting a scene on a view whose engine
- *     already took one disposes that engine and builds the next on the surface it drew to (`replaceBridge`).
+ *   - One engine per process and backend (`SharedEngine`): every view draws with it, through its own
+ *     Renderer and swap chain (`SurfaceTarget`). One scene per bridge: setting a scene on a view whose bridge
+ *     already took one disposes that bridge and builds the next on the same target (`replaceBridge`) — the
+ *     swap chain stays, nothing waits for the GPU.
+ *   - The window going: a TextureView's waits for nothing — its SurfaceTexture is released once
+ *     the driver has destroyed the swap chain on it (`onSurfaceTextureDestroyed` returns false); a SurfaceView's
+ *     waits for the engine's queue, as Android asks of `surfaceDestroyed` (a neighbour's compile too).
  *   - A resize to another size makes the swap chain again on the same surface (`SwapChainSize`): Vulkan on
  *     Android reads the window's size from what the surface cached before the resize, so the frame after a
  *     turn was drawn at the size of the orientation before. Both backends take the one path.
@@ -51,15 +57,20 @@
  *   - The frame loop (the scene's tick and the frame) runs while the view is attached to a window that is
  *     shown: a stopped activity — the app in the background — takes no steps and draws nothing (iOS's display
  *     link stops with the app the same way); back on screen the scene goes on from where it stood.
+ *   - By the view's distance from the screen (`ScreenDistance`), taken at every wake of the loop, whatever the
+ *     policy: only a view showing on screen draws; one within a screen of it draws its first frame and stands; one
+ *     further gives back its swap chain, Renderer and pixelation targets, and its surface keeps the last frame.
+ *     The scene ticks on. Memory trims (`MemoryTrim`): the app hidden, every view gives them back; in the
+ *     background, a view out of its window also unloads its scene, built again from the core's when it is back.
  */
 package studio.tride.kit
 
 import android.content.Context
 import android.content.pm.PackageManager
 import android.graphics.Bitmap
+import android.graphics.SurfaceTexture
 import android.os.Build
 import android.os.Handler
-import android.util.Log
 import android.view.Choreographer
 import android.view.MotionEvent
 import android.view.PixelCopy
@@ -74,7 +85,7 @@ import com.google.android.filament.android.UiHelper
 import studio.tride.core.TridePointerPhase
 import studio.tride.core.TrideRenderOverrides
 
-private const val TAG = "tride.view"
+private const val TAG = TrideLog.VIEW
 
 public class FilamentSurfaceView @JvmOverloads constructor(
     context: Context,
@@ -117,6 +128,16 @@ public class FilamentSurfaceView @JvmOverloads constructor(
     private var looping = false
     /** The loop ran and stood since: the scene hears it resume ([TrideKitScene.loopResumed]). */
     private var loopStood = false
+    /** Where the view stood from the screen when last asked; `null` before the first time. */
+    internal var screenDistance: ScreenDistance? = null
+        private set
+    /** A frame was drawn on the current swap chain: a near view stands after it. */
+    private var drewOnSwapChain = false
+    /** A background trim unloaded the scene while the view was out of its window: built again on its return. */
+    internal var sceneUnloaded = false
+        private set
+    private val visibleRect = android.graphics.Rect()
+    private val windowLocation = IntArray(2)
 
     public var renderPolicy: RenderPolicy = RenderPolicy.ON_DEMAND
 
@@ -140,7 +161,7 @@ public class FilamentSurfaceView @JvmOverloads constructor(
             if (rate.refused && value != null && !refusedRateReported) {
                 refusedRateReported = true
                 val message = RenderRate.refusalMessage(value)
-                scene?.takeUnless { it.isClosed }?.reportFromView("preferredFps", message) ?: Log.w(TAG, message)
+                scene?.takeUnless { it.isClosed }?.reportFromView("preferredFps", message) ?: TrideLog.warning(TAG) { message }
             }
             pacer.setRate(rate.fps)
             handPace()
@@ -188,6 +209,29 @@ public class FilamentSurfaceView @JvmOverloads constructor(
     /** A fence behind the oldest unreported frame; one at a time, polled on each vsync. */
     private var frameFence: Fence? = null
     private var fencedFrame = 0L
+    /** Frames up to this count were the scenes' before the shown one: followed (the swap chain's), not reported. */
+    private var reportFloor = 0L
+
+    /** The engine asks it before destroying a retired Renderer (`SharedEngine.retire`). */
+    private val frameQueue = SharedEngine.FrameQueue { !disposed && ownFrameQueued() }
+
+    /**
+     * This view's newest frame may not be executed yet: its fence has not signalled, or it has none yet. A loop
+     * that stood (out of the window, the app hidden) with frames past its fence fences the newest here: no later
+     * frame of its own would, and the engine's retired Renderers waited for it for good.
+     */
+    private fun ownFrameQueued(): Boolean {
+        val fence = frameFence
+        if (fence != null && fence.wait(Fence.Mode.DONT_FLUSH, 0) != Fence.FenceStatus.CONDITION_SATISFIED) return true
+        if (fencedFrame >= frameCount) return false
+        if (looping) return true
+        // The older fence signalled (its report skipped: the newest is reported once the loop runs again).
+        fence?.let { bridge.engine.destroyFence(it) }
+        frameFence = bridge.engine.createFence()
+        bridge.engine.flush()
+        fencedFrame = frameCount
+        return true
+    }
 
     public var scene: TrideKitScene? = null
         set(value) {
@@ -203,6 +247,8 @@ public class FilamentSurfaceView @JvmOverloads constructor(
                 finger.reset()
                 old.detach(bridge)
             }
+            sceneUnloaded = false
+            freeOrbit = null
             field = null
             if (value == null) return
             if (bridgeUsed) replaceBridge()
@@ -217,6 +263,7 @@ public class FilamentSurfaceView @JvmOverloads constructor(
             } catch (e: Exception) {
                 // A scene the bridge refused is not shown: nothing it set up reaches this view's frames.
                 value.detach(bridge)
+                TrideLog.error(TAG) { "the scene is not shown: ${e.message}" }
                 throw e
             }
             field = value
@@ -224,21 +271,18 @@ public class FilamentSurfaceView @JvmOverloads constructor(
         }
 
     /**
-     * A fresh engine for the next scene, on the surface and buffer size the old one drew to. The old bridge goes
-     * first: its swap chain must leave the surface before another engine's can be made on it.
+     * A fresh bridge for the next scene on the view's swap chain and Renderer (they stay, nothing waits) and the
+     * buffer size the old one drew at. The old scene's frames in flight stay followed — the window may go while
+     * one is queued — but are not reported as the new scene's.
      */
     private fun replaceBridge() {
-        frameFence?.let { bridge.engine.destroyFence(it) }
-        frameFence = null
-        // The old engine's frames are not followed any more.
-        fencedFrame = frameCount
+        reportFloor = frameCount
         sceneCamera = null
+        val target = bridge.takeTarget()
         bridge.dispose()
-        bridge = FilamentSceneBridge(requestedBackend)
+        bridge = FilamentSceneBridge(requestedBackend, target)
         handPace()
         bridgeUsed = false
-        val surface = currentSurface
-        if (surface != null && uiHelper.isReadyToRender) bridge.attachSurface(surface, uiHelper.swapChainFlags)
         if (bufferWidth > 0 && bufferHeight > 0) bridge.resize(bufferWidth, bufferHeight, pixelsPerDp(bufferWidth))
     }
 
@@ -254,19 +298,21 @@ public class FilamentSurfaceView @JvmOverloads constructor(
         }
         requestedBackend = requested
         bridge = FilamentSceneBridge(requested)
-        Log.i(TAG, "FilamentSurfaceView: backend=${bridge.backend} (requested $requested) surface=$surfaceKind hardware=${Build.HARDWARE}")
+        bridge.shared.watch(frameQueue)
+        MemoryTrim.register(this)
+        TrideLog.debug(TAG) { "FilamentSurfaceView: backend=${bridge.backend} (requested $requested) surface=$surfaceKind hardware=${Build.HARDWARE}" }
     }
 
     private val surfaceCallback = object : UiHelper.RendererCallback {
         override fun onNativeWindowChanged(surface: Surface) {
             currentSurface = surface
-            bridge.attachSurface(surface, uiHelper.swapChainFlags)
-            swapChainSize.made()
+            // Far from the screen, the window waits for the view to come near.
+            if (measureDistance() == ScreenDistance.FAR) giveBackSurface() else makeSwapChain(surface)
         }
         override fun onDetachedFromSurface() {
             swapChainSize.gone()
             currentSurface = null
-            bridge.detachSurface()
+            bridge.detachSurface(waitForDriver = surfaceKind == SurfaceKind.SURFACE_VIEW)
         }
         override fun onResized(width: Int, height: Int) {
             bufferWidth = width
@@ -294,7 +340,10 @@ public class FilamentSurfaceView @JvmOverloads constructor(
         uiHelper.isOpaque = opaque
         uiHelper.renderCallback = surfaceCallback
         when (view) {
-            is TextureView -> uiHelper.attachTo(view)
+            is TextureView -> {
+                uiHelper.attachTo(view)
+                view.surfaceTextureListener = ReleaseBehindDriver(view.surfaceTextureListener)
+            }
             is SurfaceView -> uiHelper.attachTo(view)
         }
         addView(view, LayoutParams(LayoutParams.MATCH_PARENT, LayoutParams.MATCH_PARENT))
@@ -303,13 +352,35 @@ public class FilamentSurfaceView @JvmOverloads constructor(
     /** A new surface of the given opacity: the old one leaves Filament (its swap chain first) and the layout. */
     private fun makeSurface(opaque: Boolean) {
         uiHelper.detach()
+        keepTextureUntilDriverDone()
         removeView(target)
         this.opaque = opaque
         uiHelper = UiHelper(UiHelper.ContextErrorPolicy.DONT_CHECK)
         target = newTarget()
         attachSurface(target)
         applyPixelScale()
-        Log.i(TAG, "FilamentSurfaceView: ${if (opaque) "opaque" else "transparent"} $surfaceKind for the scene")
+        TrideLog.debug(TAG) { "FilamentSurfaceView: ${if (opaque) "opaque" else "transparent"} $surfaceKind for the scene" }
+    }
+
+    /**
+     * `UiHelper`'s TextureView listener, but the SurfaceTexture outlives the swap chain on it: released once the
+     * driver has destroyed that swap chain, so the window going waits for nothing and the driver never touches
+     * an abandoned queue.
+     */
+    private inner class ReleaseBehindDriver(private val inner: TextureView.SurfaceTextureListener?) : TextureView.SurfaceTextureListener {
+        override fun onSurfaceTextureAvailable(st: SurfaceTexture, width: Int, height: Int) { inner?.onSurfaceTextureAvailable(st, width, height) }
+        override fun onSurfaceTextureSizeChanged(st: SurfaceTexture, width: Int, height: Int) { inner?.onSurfaceTextureSizeChanged(st, width, height) }
+        override fun onSurfaceTextureUpdated(st: SurfaceTexture) { inner?.onSurfaceTextureUpdated(st) }
+        override fun onSurfaceTextureDestroyed(st: SurfaceTexture): Boolean {
+            inner?.onSurfaceTextureDestroyed(st)
+            bridge.shared.afterQueue { st.release() }
+            return false
+        }
+    }
+
+    /** `UiHelper` let go of the TextureView (its listener cleared): the texture still goes behind the driver. */
+    private fun keepTextureUntilDriverDone() {
+        (target as? TextureView)?.surfaceTextureListener = ReleaseBehindDriver(null)
     }
 
     /** The swap chain's buffer in pixels, as `UiHelper` last reported it (checks). */
@@ -339,18 +410,31 @@ public class FilamentSurfaceView @JvmOverloads constructor(
             vsyncCount++
             if (pacer.admit(frameTimeNanos)) {
                 wakeCount++
+                val distance = measureDistance()
+                if (distance == ScreenDistance.FAR) giveBackSurface() else currentSurface?.let { if (!bridge.hasSwapChain) makeSwapChain(it, sized = true) }
                 val shown = scene
                 shown?.onFrame(frameTimeNanos, pacer.maxStepMs)
                 // Nothing is drawn before a scene is: an empty frame reported "on screen" let a host drop its
                 // placeholder seconds before the scene's first frame (its shaders still compiling).
-                val due = renderPolicy == RenderPolicy.CONTINUOUS || bridge.needsRender
-                if (shown != null && uiHelper.isReadyToRender && due && bridge.render(frameTimeNanos)) frameCount++
+                // A paused scene draws the same picture again: CONTINUOUS draws every frame only while the scene plays
+                // or TAA is on (its jitter and history make still frames differ). A near view draws one frame on its
+                // swap chain (its compile off the swipe), then stands.
+                val due = when (distance) {
+                    ScreenDistance.ON_SCREEN -> bridge.needsRender || renderPolicy == RenderPolicy.CONTINUOUS &&
+                        (shown?.isPlaying == true || bridge.temporalAntiAliasing)
+                    ScreenDistance.NEAR -> !drewOnSwapChain
+                    ScreenDistance.FAR -> false
+                }
+                if (shown != null && uiHelper.isReadyToRender && due && bridge.render(frameTimeNanos)) {
+                    frameCount++
+                    drewOnSwapChain = true
+                }
             }
             frameFence?.let { fence ->
                 if (fence.wait(Fence.Mode.DONT_FLUSH, 0) == Fence.FenceStatus.CONDITION_SATISFIED) {
                     bridge.engine.destroyFence(fence)
                     frameFence = null
-                    onFrameDrawn?.invoke(fencedFrame)
+                    if (fencedFrame > reportFloor) onFrameDrawn?.invoke(fencedFrame)
                 }
             }
             // One fence at a time, always behind the newest frame: frames drawn while an older fence was
@@ -364,6 +448,84 @@ public class FilamentSurfaceView @JvmOverloads constructor(
             }
             if (looping) choreographer.postFrameCallback(this)
         }
+    }
+
+    /**
+     * The view's distance from the screen now ([ScreenDistance]): shown with a pixel left after its parents' clips,
+     * else the gaps between its rectangle and its window's; kept for the next time (the far boundary's hysteresis).
+     */
+    private fun measureDistance(): ScreenDistance {
+        val root = rootView
+        // Not laid out yet: on screen, as before, but not kept — the first real decision takes the near rule alone.
+        if (width <= 0 || height <= 0 || root.width <= 0 || root.height <= 0) return ScreenDistance.ON_SCREEN
+        val visible = isShown && getGlobalVisibleRect(visibleRect)
+        getLocationInWindow(windowLocation)
+        val (x, y) = windowLocation[0] to windowLocation[1]
+        val distance = ScreenDistance.next(
+            screenDistance, visible,
+            ScreenDistance.gap(x, x + width, root.width), ScreenDistance.gap(y, y + height, root.height),
+            root.width, root.height,
+        )
+        screenDistance = distance
+        return distance
+    }
+
+    /**
+     * The swap chain on [surface] (and a Renderer, when the view gave its own back); [sized] = the window keeps the
+     * size it last reported (the view back near), else `onResized` follows (a new window).
+     */
+    private fun makeSwapChain(surface: Surface, sized: Boolean = false) {
+        bridge.attachSurface(surface, uiHelper.swapChainFlags)
+        swapChainSize.made()
+        if (sized && bufferWidth > 0 && bufferHeight > 0) swapChainSize.resized(bufferWidth, bufferHeight)
+        drewOnSwapChain = false
+    }
+
+    /** Swap chain, Renderer and pixelation targets go; the surface stays and shows the last frame. */
+    private fun giveBackSurface() {
+        if (!bridge.holdsGpu) return
+        bridge.giveBackSurface()
+        swapChainSize.gone()
+        drewOnSwapChain = false
+    }
+
+    /**
+     * A memory trim ([MemoryTrim]): the view gives back its swap chain, Renderer and pixelation targets; in the
+     * [background], one out of its window also unloads its scene — the scene's runtime stays, and the view builds
+     * the scene again from it when it is back in a window.
+     */
+    internal fun trimMemory(background: Boolean) {
+        if (disposed) return
+        giveBackSurface()
+        if (background && !attachedToWindow) unloadScene()
+    }
+
+    private fun unloadScene() {
+        val shown = scene ?: return
+        if (sceneUnloaded || !bridgeUsed) return
+        shown.detach(bridge)
+        replaceBridge()
+        sceneUnloaded = true
+        TrideLog.debug(TAG) { "FilamentSurfaceView: the scene unloaded (background, out of the window)" }
+    }
+
+    /** The scene unloaded in the background, built again from its runtime: it goes on from where it stood. */
+    private fun reloadScene() {
+        if (!sceneUnloaded) return
+        sceneUnloaded = false
+        val shown = scene?.takeUnless { it.isClosed } ?: return
+        renderOverrides?.let { shown.setRenderOverrides(it) }
+        try {
+            shown.attach(bridge, context.assets)
+            bridgeUsed = true
+        } catch (e: Exception) {
+            // Built once already: a refusal now leaves the view empty, the scene and its runtime usable.
+            shown.detach(bridge)
+            TrideLog.error(TAG) { "the scene is not shown again: ${e.message}" }
+            return
+        }
+        freeOrbit?.let { (yaw, pitch, scale) -> orbitFreeCamera(yaw, pitch, scale) }
+        reportSize()
     }
 
     /**
@@ -402,6 +564,7 @@ public class FilamentSurfaceView @JvmOverloads constructor(
         // The display is known from here: its refresh rate reaches Filament.
         handPace()
         attachedToWindow = true
+        reloadScene()
         startLoop()
     }
 
@@ -442,6 +605,8 @@ public class FilamentSurfaceView @JvmOverloads constructor(
 
     /** The scene camera [orbitFreeCamera] stepped aside from — [useSceneCamera] brings it back. */
     private var sceneCamera: String? = null
+    /** The view's own camera's last orbit (yaw, pitch, distance scale): a scene built again takes it. */
+    private var freeOrbit: Triple<Float, Float, Float>? = null
 
     /**
      * Look through the view's own camera, orbited around what it framed: [yaw] / [pitch] radians from the
@@ -452,6 +617,7 @@ public class FilamentSurfaceView @JvmOverloads constructor(
      */
     public fun orbitFreeCamera(yaw: Float, pitch: Float, distanceScale: Float = 1f) {
         if (disposed) return
+        freeOrbit = Triple(yaw, pitch, distanceScale)
         bridge.activeCameraId?.let { id ->
             sceneCamera = id
             bridge.useFreeCamera()
@@ -462,6 +628,7 @@ public class FilamentSurfaceView @JvmOverloads constructor(
     /** Back to the scene camera [orbitFreeCamera] stepped aside from; nothing when none did. */
     public fun useSceneCamera() {
         if (disposed) return
+        freeOrbit = null
         val id = sceneCamera ?: return
         sceneCamera = null
         bridge.setActiveCamera(id)
@@ -472,11 +639,14 @@ public class FilamentSurfaceView @JvmOverloads constructor(
         if (disposed) return
         disposed = true
         stopLoop()
-        frameFence?.let { bridge.engine.destroyFence(it) }
-        frameFence = null
         // The scene may outlive the view (its owner keeps it): it must not reach this engine again.
         scene?.detach(bridge)
         uiHelper.detach()
+        keepTextureUntilDriverDone()
+        frameFence?.let { bridge.engine.destroyFence(it) }
+        frameFence = null
+        bridge.shared.unwatch(frameQueue)
+        MemoryTrim.unregister(this)
         bridge.dispose()
     }
 

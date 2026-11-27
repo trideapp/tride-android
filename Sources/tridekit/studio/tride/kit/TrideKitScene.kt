@@ -54,6 +54,9 @@
  *     Signals reach the handlers on the main thread right after their tick's changes reached the bridge, in the
  *     runtime's order. `tickOnce`, `advance`, `reset`, `pause`, `pick`, an attach and new render knobs apply the
  *     frame in flight first (`settleFrame`); `MAIN_THREAD` is the old path.
+ *   - The log is `TrideKitLog`'s (one level per process, `WARNING` by default): the tick writes no line at any
+ *     level; the core's notices are taken after each load and tick (`CoreNotices`) and reach every open scene's
+ *     [onDiagnostic] as `RUNTIME` `core.notice`.
  *   - Threads: the constructor and the runtime-only calls (`setBinding` / `getBinding` / `trigger` / `setInputs` /
  *     `inputsJson` / `readProperty` / `currentState` / layers / `bindInput` / `availableBindings` / `validateBindings` /
  *     `dragAxes`) may run on any thread (the runtime locks itself); every call that steps, draws, touches, subscribes or closes is the
@@ -69,7 +72,6 @@ import android.net.Uri
 import android.os.Build
 import android.os.Handler
 import android.os.Looper
-import android.util.Log
 import androidx.annotation.MainThread
 import com.google.android.filament.Engine
 import kotlinx.coroutines.CancellationException
@@ -107,7 +109,7 @@ import studio.tride.core.materialPackageInfo
 import studio.tride.kit.record.RecordScene
 import kotlin.math.min
 
-private const val TAG = "tride.kit"
+private const val TAG = TrideLog.KIT
 private const val MAX_DT_MS = 33.4f
 
 /** The runtime's binding kinds as the kit names them. */
@@ -275,7 +277,14 @@ public class TrideKitScene(trdBytes: ByteArray) : AutoCloseable {
             "This scene's material '$slug' could not be loaded on this device and is drawn plainly. Open the scene in the Tride editor of this version and save it again.",
         )
 
-        private fun loadCore(trdBytes: ByteArray): TrideScene = native { TrideScene.load(trdBytes) }
+        /**
+         * The core's notices are taken before (the first take tells the runtime to leave the log to TrideKit)
+         * and after the load (its own notices).
+         */
+        private fun loadCore(trdBytes: ByteArray): TrideScene = native {
+            CoreNotices.pull()
+            try { TrideScene.load(trdBytes) } finally { CoreNotices.pull() }
+        }
 
         /**
          * The first call into the runtime loads `libtride_ffi.so` through JNA. On a device whose ABI the
@@ -307,6 +316,8 @@ public class TrideKitScene(trdBytes: ByteArray) : AutoCloseable {
     private val eventHandlers = LinkedHashMap<Long, (TrideKitEvent) -> Unit>()
     private val stateHandlers = LinkedHashMap<Long, (TrideKitStateChange) -> Unit>()
     private val diagnosticHandlers = LinkedHashMap<Long, (TrideKitDiagnostic) -> Unit>()
+    /** How many of the process's core notices ([CoreNotices]) this scene has handed to its diagnostics. */
+    private var coreNoticeCursor = 0
     private var nextSubscription = 1L
 
     private var pendingAdvance: MutableList<TrideMutation> = ArrayList()
@@ -494,7 +505,8 @@ public class TrideKitScene(trdBytes: ByteArray) : AutoCloseable {
                 coreSignals.add(SceneSignal.State(TrideKitStateChange(change.layerIndex.toInt(), change.layerId, change.from, change.to, change.transition)))
             }
         })
-        Log.i(TAG, "loaded TrideScene from ${trdBytes.size} bytes")
+        CoreNotices.open(this)
+        TrideLog.info(TAG) { "loaded TrideScene from ${trdBytes.size} bytes" }
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -647,11 +659,17 @@ public class TrideKitScene(trdBytes: ByteArray) : AutoCloseable {
         return Subscription { checkMain(); stateHandlers.remove(id) }
     }
 
-    /** Problems the scene meets (load, evaluation, changes this kit cannot show, failed calls); logcat has them too. */
+    /**
+     * Problems the scene meets (load, evaluation, changes this kit cannot show, failed calls); the log gets them
+     * too, once, at `WARNING` ([TrideKitLog]). The core's notices (`RUNTIME`, code `core.notice`) come here
+     * whatever the log's level: a handler subscribed after the scene handed some out gets those at once, the rest
+     * after the next tick.
+     */
     public fun onDiagnostic(handler: (TrideKitDiagnostic) -> Unit): Subscription {
         checkOpenOnMain()
         val id = nextSubscription++
         diagnosticHandlers[id] = handler
+        for (message in CoreNotices.since(0).first.take(coreNoticeCursor)) handler(CoreNotices.diagnostic(message))
         return Subscription { checkMain(); diagnosticHandlers.remove(id) }
     }
 
@@ -879,8 +897,7 @@ public class TrideKitScene(trdBytes: ByteArray) : AutoCloseable {
             val keep = HostPictureStore.keptRevisions(
                 input?.status, input?.revision?.toLong() ?: 0L, input?.width?.toInt() ?: 0, gen?.boundRevisions(name) ?: emptySet(),
             )
-            val freed = pictures.retain(name, keep)
-            if (freed > 0) debugLog { "image input '$name': $freed picture(s) let go, kept $keep" }
+            pictures.retain(name, keep)
         }
         picturesToPrune.clear()
     }
@@ -992,7 +1009,6 @@ public class TrideKitScene(trdBytes: ByteArray) : AutoCloseable {
         }
         prunePictures()
         deliverSignals()
-        debugLog { "advance: ticks=${result.ticks} mutations=${result.tick.mutations.size}" }
         val ticks = result.ticks.toLong()
         val step = result.stoppedStep ?: return TrideKitAdvance.Completed(ticks)
         return TrideKitAdvance.Stopped(step.toInt(), result.stoppedReason ?: "stopped", ticks)
@@ -1032,7 +1048,7 @@ public class TrideKitScene(trdBytes: ByteArray) : AutoCloseable {
         // The pixelation pass's material comes from the same library assets.
         bridge.materialPackage = materialPackage
         bridge.generators = FilamentGenerators(
-            engine = bridge.engine,
+            shared = bridge.shared,
             scene = bridge.filamentScene,
             materialPackage = materialPackage,
             assetBytes = ::cachedAssetBytes,
@@ -1074,7 +1090,7 @@ public class TrideKitScene(trdBytes: ByteArray) : AutoCloseable {
         // The first frame: whatever the first tick moved, environment and settings included.
         tickAndDispatch(0f)
         bridge.needsRender = true
-        Log.i(TAG, "attached: nodes=${nodeIdToIndex.size} lights=${record.lights.size} cameras=${record.cameras.size} activeCamera=${core.activeCamera() ?: "-"}")
+        TrideLog.debug(TAG) { "attached: nodes=${nodeIdToIndex.size} lights=${record.lights.size} cameras=${record.cameras.size} activeCamera=${core.activeCamera() ?: "-"}" }
     }
 
     /**
@@ -1218,14 +1234,14 @@ public class TrideKitScene(trdBytes: ByteArray) : AutoCloseable {
             val bytes = core.assetBytes(graph.packageUri) ?: continue
             val info = materialPackageInfo(bytes)
             if (info == null || info.version != engineVersion || backend !in info.backends) {
-                Log.w(TAG, "node material '$slug' ($family): package version ${info?.version} for engine $engineVersion, backends ${info?.backends} without $backend")
+                TrideLog.warning(TAG) { "node material '$slug' ($family): package version ${info?.version} for engine $engineVersion, backends ${info?.backends} without $backend" }
                 refused += hostRefused(slug, family); continue
             }
             if (!gen.registerMaterialGraph(slug, family, bytes, graph)) { refused += hostRefused(slug, family); continue }
             materialGraphFamilies.getOrPut(slug) { ArrayList() } += family
             pushMaterialGraphValues(slug, family, gen)
         }
-        Log.i(TAG, "node materials: ${materialGraphFamilies.size} of ${slugs.size} loaded")
+        TrideLog.debug(TAG) { "node materials: ${materialGraphFamilies.size} of ${slugs.size} loaded" }
         return refused
     }
 
@@ -1249,7 +1265,7 @@ public class TrideKitScene(trdBytes: ByteArray) : AutoCloseable {
             if (d.modules.isNotEmpty()) generatorModules[d.id] = d.modules
             uploadGeneratedMesh(d.id, bridge)
         }
-        if (generators.isNotEmpty()) Log.i(TAG, "materialized ${generators.size} generator mesh(es)")
+        if (generators.isNotEmpty()) TrideLog.debug(TAG) { "materialized ${generators.size} generator mesh(es)" }
     }
 
     /**
@@ -1265,13 +1281,13 @@ public class TrideKitScene(trdBytes: ByteArray) : AutoCloseable {
         gen.setStandardMaterials(built.materials.mapNotNull { m -> m.standard?.let { m.slug to it } }.toMap())
         parametricNodes = built.datablockNodes
         for (n in parametricNodes) uploadParametricNode(n, gen)
-        if (parametricNodes.isNotEmpty()) Log.i(TAG, "materialized ${parametricNodes.size} parametric node(s)")
+        if (parametricNodes.isNotEmpty()) TrideLog.debug(TAG) { "materialized ${parametricNodes.size} parametric node(s)" }
         // A key asking for what the record does not carry (or a picture this build cannot decode): drawn in part.
         RecordScene.gapsNotice(gen.standardMaterialGaps())?.let(::notePartialDraw)
         // The nodes the runtime bent at load (a parametric one drew bent above).
         val bent = core.listDeformedNodes()
         for (uid in bent) refreshDeformed(uid, bridge)
-        if (bent.isNotEmpty()) Log.i(TAG, "materialized ${bent.size} bent node(s)")
+        if (bent.isNotEmpty()) TrideLog.debug(TAG) { "materialized ${bent.size} bent node(s)" }
     }
 
     /**
@@ -1402,10 +1418,7 @@ public class TrideKitScene(trdBytes: ByteArray) : AutoCloseable {
     private fun uploadGeneratedMesh(id: String, bridge: FilamentSceneBridge, trunkEpoch: Long? = null) {
         val gen = bridge.generators ?: return
         if (trunkEpoch != null && uploadedTrunkEpoch[id] == trunkEpoch) { syncModuleInstances(id, bridge); return }
-        val debug = Log.isLoggable(TAG, Log.DEBUG)
-        val t0 = if (debug) System.nanoTime() else 0L
         val geometry = coreGeometry(id) ?: run { reportLoad(id, "generator '$id' has no geometry (its evaluation failed?)"); return }
-        val t1 = if (debug) System.nanoTime() else 0L
         // The streams the preparation thread packed: only the upload is left here.
         if (gen.upsertGeneratedMesh(id, geometry, hostFor(id), pulls?.packed?.get(id))) {
             if (trunkEpoch != null) uploadedTrunkEpoch[id] = trunkEpoch else uploadedTrunkEpoch.remove(id)
@@ -1413,7 +1426,6 @@ public class TrideKitScene(trdBytes: ByteArray) : AutoCloseable {
             reportLoad(id, "generated mesh '$id' could not be drawn")
             uploadedTrunkEpoch.remove(id)
         }
-        if (debug) Log.d(TAG, "generated mesh '$id' verts=${geometry.positions.size / 12} ffi=${(t1 - t0) / 1e6}ms upload=${(System.nanoTime() - t1) / 1e6}ms")
         syncModuleInstances(id, bridge)
     }
 
@@ -1433,9 +1445,8 @@ public class TrideKitScene(trdBytes: ByteArray) : AutoCloseable {
                 val slug = moduleMaterialSlug[part.uid]
                 // The instance rows travel with the transforms, pulled only where the material samples them.
                 val colors = if (gen.samplesInstanceColors(slug)) coreColors(id, binding.symbol) else null
-                val placed = gen.syncModuleInstances(id, binding.symbol + part.suffix, part.uid, transforms, colors, generatorHostIndex[id],
+                gen.syncModuleInstances(id, binding.symbol + part.suffix, part.uid, transforms, colors, generatorHostIndex[id],
                     PaletteLook(slug, moduleMaterialParams[part.uid]))
-                debugLog { "generator '$id' module '${binding.symbol + part.suffix}': $placed/${transforms.size / 64} instances" }
             }
         }
     }
@@ -1463,8 +1474,7 @@ public class TrideKitScene(trdBytes: ByteArray) : AutoCloseable {
         for ((id, material) in generatorMaterialSlug) if (material == slug) generatorMaterialParams[id] = params
         for ((datablock, material) in moduleMaterialSlug) if (material == slug) moduleMaterialParams[datablock] = params
         for ((id, look) in generatorPulseLook) if (look.material == slug) generatorPulseLook[id] = TridePulseLook(slug, params)
-        val touched = gen.updatePaletteMaterial(slug, params)
-        debugLog { "palette '$slug': $touched instance(s) recoloured" }
+        gen.updatePaletteMaterial(slug, params)
     }
 
     /**
@@ -1503,7 +1513,7 @@ public class TrideKitScene(trdBytes: ByteArray) : AutoCloseable {
         }
         if (settings == null) {
             if (bridge.renderSettingsShown != null) bridge.restoreInitialRenderSettings()
-            Log.i(TAG, "renderSettings: not authored — Filament defaults")
+            TrideLog.debug(TAG) { "renderSettings: not authored — Filament defaults" }
             return
         }
         bridge.applyRenderSettings(settings)
@@ -1535,7 +1545,7 @@ public class TrideKitScene(trdBytes: ByteArray) : AutoCloseable {
         val light = frame.light.source?.takeIf { frame.light.kind == "map" }?.let { mapBytes(it, "ibl") }
         val sky = frame.sky.map?.let { mapBytes(it.source, "skybox") }
         bridge.applyEnvironment(frame, EnvironmentMaps(light, sky))
-        Log.i(TAG, "environment: light=${frame.light.kind} map shown=${frame.sky.map != null} transparent=${frame.transparent}")
+        TrideLog.debug(TAG) { "environment: light=${frame.light.kind} map shown=${frame.sky.map != null} transparent=${frame.transparent}" }
     }
 
     private fun readAsset(assets: AssetManager, path: String): ByteArray? =
@@ -1873,7 +1883,13 @@ public class TrideKitScene(trdBytes: ByteArray) : AutoCloseable {
         if ((dirtyGenerators.isNotEmpty() || dirtyDatablocks.isNotEmpty() || dirtyDeformed.isNotEmpty()) && anyHidden) applyNodeVisibility(bridge)
     }
 
+    /**
+     * Hand this frame's signals to the handlers, in the runtime's order — the core's new notices first taken and
+     * queued, after each tick and failed call, on the main thread, outside any runtime call.
+     */
     private fun deliverSignals() {
+        CoreNotices.pull()
+        queueCoreNotices()
         if (inbox.isEmpty()) return
         val batch = ArrayList(inbox)
         inbox.clear()
@@ -1907,12 +1923,34 @@ public class TrideKitScene(trdBytes: ByteArray) : AutoCloseable {
     internal fun reportFromView(subject: String, message: String) =
         reportNow(TrideKitDiagnosticKind.RUNTIME, subject, message)
 
-    /** Logged and queued for [onDiagnostic] once per (kind, subject, message); delivered after the frame. */
-    private fun report(kind: TrideKitDiagnosticKind, subject: String, message: String, code: String? = null) {
+    /**
+     * Logged (`WARNING`; an evaluation's under `tride.eval`) and queued for [onDiagnostic] once per (kind, subject,
+     * message); delivered after the frame. The core's notices are in the log already ([CoreNotices.pull]):
+     * [logged] keeps them out of it.
+     */
+    private fun report(kind: TrideKitDiagnosticKind, subject: String, message: String, code: String? = null, logged: Boolean = true) {
         val d = TrideKitDiagnostic(kind, subject, message, code)
         if (!reported.add(d)) return
-        if (kind == TrideKitDiagnosticKind.EVALUATION) Log.e("tride.eval", "$subject: $message") else Log.w(TAG, message)
+        if (logged) {
+            if (kind == TrideKitDiagnosticKind.EVALUATION) TrideLog.warning(TrideLog.EVAL) { "$subject: $message" }
+            else TrideLog.warning(TAG) { message }
+        }
         inbox += SceneSignal.Problem(d)
+    }
+
+    /** The process's core notices this scene has not handed out yet, queued as diagnostics. */
+    private fun queueCoreNotices() {
+        val (notices, next) = CoreNotices.since(coreNoticeCursor)
+        coreNoticeCursor = next
+        for (message in notices) {
+            val d = CoreNotices.diagnostic(message)
+            report(d.kind, d.subject, d.message, d.code, logged = false)
+        }
+    }
+
+    /** New core notices another scene took: handed to this scene's diagnostics now (main thread). */
+    internal fun deliverCoreNotices() {
+        if (!closed) deliverSignals()
     }
 
     /** [report] outside a tick: delivered at once. */
@@ -1924,11 +1962,6 @@ public class TrideKitScene(trdBytes: ByteArray) : AutoCloseable {
     /** Loading problems met by the bridge and the generators (at attach and on later uploads). */
     private fun reportLoad(subject: String, message: String, code: String? = null) =
         report(TrideKitDiagnosticKind.LOAD, subject, message, code)
-
-    /** Per-tick detail, off in release logcat: `adb shell setprop log.tag.tride.kit DEBUG` turns it on. */
-    private inline fun debugLog(message: () -> String) {
-        if (Log.isLoggable(TAG, Log.DEBUG)) Log.d(TAG, message())
-    }
 
     private fun warnOnce(kind: TrideKitDiagnosticKind, subject: String, message: String) = report(kind, subject, message)
 }

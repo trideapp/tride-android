@@ -26,7 +26,6 @@ import android.media.MediaFormat
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
-import android.util.Log
 import androidx.annotation.MainThread
 import androidx.media3.common.AudioAttributes
 import androidx.media3.common.C
@@ -273,11 +272,10 @@ internal class TrackDecoder(
                     is Piece.End -> {
                         sink.end()
                         progress(Double.POSITIVE_INFINITY)
-                        Log.i(
-                            "tride.kit",
+                        TrideLog.debug(TrideLog.KIT) {
                             "track ${uri.lastPathSegment}: whole in ${(System.nanoTime() - started) / 1_000_000} ms " +
-                                "(decoding ${p.decodeMs} ms, codec ${p.codecMs} ms; runtime ${runtimeNs / 1_000_000} ms, overlapped)",
-                        )
+                                "(decoding ${p.decodeMs} ms, codec ${p.codecMs} ms; runtime ${runtimeNs / 1_000_000} ms, overlapped)"
+                        }
                         done(null)
                         return
                     }

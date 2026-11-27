@@ -961,6 +961,8 @@ internal open class UniffiVTableCallbackInterfaceTrideStateChangeListener(
 
 
 
+
+
 // A JNA Library to expose the extern-C FFI definitions.
 // This is an implementation detail which will be called internally by the public API.
 
@@ -1169,6 +1171,8 @@ internal interface UniffiLib : Library {
     ): RustBuffer.ByValue
     fun uniffi_tride_ffi_fn_func_tags_corpus_observe(`fixtureJson`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
+    fun uniffi_tride_ffi_fn_func_take_core_notices(uniffi_out_err: UniffiRustCallStatus, 
+    ): RustBuffer.ByValue
     fun uniffi_tride_ffi_fn_func_text_corpus_observe(`fixtureJson`: RustBuffer.ByValue,`fonts`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
     ): RustBuffer.ByValue
     fun uniffi_tride_ffi_fn_func_timeline_corpus_observe(`fixtureJson`: RustBuffer.ByValue,uniffi_out_err: UniffiRustCallStatus, 
@@ -1318,6 +1322,8 @@ internal interface UniffiLib : Library {
     fun uniffi_tride_ffi_checksum_func_quat_to_euler(
     ): Short
     fun uniffi_tride_ffi_checksum_func_tags_corpus_observe(
+    ): Short
+    fun uniffi_tride_ffi_checksum_func_take_core_notices(
     ): Short
     fun uniffi_tride_ffi_checksum_func_text_corpus_observe(
     ): Short
@@ -1538,6 +1544,9 @@ private fun uniffiCheckApiChecksums(lib: UniffiLib) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_tride_ffi_checksum_func_tags_corpus_observe() != 55602.toShort()) {
+        throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
+    }
+    if (lib.uniffi_tride_ffi_checksum_func_take_core_notices() != 50196.toShort()) {
         throw RuntimeException("UniFFI API checksum mismatch: try cleaning and rebuilding your project")
     }
     if (lib.uniffi_tride_ffi_checksum_func_text_corpus_observe() != 1738.toShort()) {
@@ -12269,6 +12278,22 @@ public object FfiConverterMapStringTypeTrideValue: FfiConverterRustBuffer<Map<ko
     uniffiRustCall() { _status ->
     UniffiLib.INSTANCE.uniffi_tride_ffi_fn_func_tags_corpus_observe(
         FfiConverterString.lower(`fixtureJson`),_status)
+}
+    )
+    }
+    
+
+        /**
+         * The core's degrade notices (`warn_once!`, each once per process) raised since the last call, in
+         * the order raised. A bridge calls it after each tick and load, outside any scene call, and writes
+         * them to its own log and diagnostics; from the first call on, `tride-ffi` writes no notice to the
+         * platform log itself. A notice raised before the first call is in the first answer
+         * too (and was already in the platform log).
+         */ fun `takeCoreNotices`(): List<kotlin.String> {
+            return FfiConverterSequenceString.lift(
+    uniffiRustCall() { _status ->
+    UniffiLib.INSTANCE.uniffi_tride_ffi_fn_func_take_core_notices(
+        _status)
 }
     )
     }

@@ -1,0 +1,123 @@
+{
+  "formatVersion": "1.1",
+  "component": {
+    "group": "studio.tride",
+    "module": "tride-core",
+    "version": "0.20.0",
+    "attributes": {
+      "org.gradle.status": "release"
+    }
+  },
+  "createdBy": {
+    "gradle": {
+      "version": "8.14.3"
+    }
+  },
+  "variants": [
+    {
+      "name": "releaseVariantReleaseApiPublication",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.libraryelements": "aar",
+        "org.gradle.usage": "java-api"
+      },
+      "dependencies": [
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib",
+          "version": {
+            "requires": "2.4.0"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "tride-core-0.20.0.aar",
+          "url": "tride-core-0.20.0.aar",
+          "size": 12379777,
+          "sha512": "a1863820c9cda7c82b8dc75d4ede13ef1b4636fa7365f8a39b2476df7a3fb1c202722b546441a964685fcb74d4099b357d60d261db28e3d069507bc90672a9a2",
+          "sha256": "c1a95c75ed88895d3819799b682fe7580421cf4d52ec19c710c25bca2b7afaba",
+          "sha1": "0f642d7da64161fa8be36000be2ba51b34910267",
+          "md5": "06d0d98c806482ace0be1812aacb91f7"
+        }
+      ]
+    },
+    {
+      "name": "releaseVariantReleaseRuntimePublication",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.libraryelements": "aar",
+        "org.gradle.usage": "java-runtime"
+      },
+      "dependencies": [
+        {
+          "group": "net.java.dev.jna",
+          "module": "jna",
+          "version": {
+            "requires": "5.17.0"
+          },
+          "excludes": [
+            {
+              "group": "*",
+              "module": "*"
+            }
+          ],
+          "thirdPartyCompatibility": {
+            "artifactSelector": {
+              "name": "jna",
+              "type": "aar",
+              "extension": "aar"
+            }
+          }
+        },
+        {
+          "group": "androidx.annotation",
+          "module": "annotation",
+          "version": {
+            "requires": "1.9.1"
+          }
+        },
+        {
+          "group": "org.jetbrains.kotlin",
+          "module": "kotlin-stdlib",
+          "version": {
+            "requires": "2.4.0"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "tride-core-0.20.0.aar",
+          "url": "tride-core-0.20.0.aar",
+          "size": 12379777,
+          "sha512": "a1863820c9cda7c82b8dc75d4ede13ef1b4636fa7365f8a39b2476df7a3fb1c202722b546441a964685fcb74d4099b357d60d261db28e3d069507bc90672a9a2",
+          "sha256": "c1a95c75ed88895d3819799b682fe7580421cf4d52ec19c710c25bca2b7afaba",
+          "sha1": "0f642d7da64161fa8be36000be2ba51b34910267",
+          "md5": "06d0d98c806482ace0be1812aacb91f7"
+        }
+      ]
+    },
+    {
+      "name": "releaseVariantReleaseSourcePublication",
+      "attributes": {
+        "org.gradle.category": "documentation",
+        "org.gradle.dependency.bundling": "external",
+        "org.gradle.docstype": "sources",
+        "org.gradle.usage": "java-runtime"
+      },
+      "files": [
+        {
+          "name": "tride-core-0.20.0-sources.jar",
+          "url": "tride-core-0.20.0-sources.jar",
+          "size": 65256,
+          "sha512": "22a60af72fb13f38b65972dd5a1036206eddedfb72dedff61d81c4deb7defeb84868b61ef3b6e3e7281fe1d0919a08fd7dfc30a8a9834951dd63892ee8d05546",
+          "sha256": "612b4e5ffbc0e744d250430b847a1e3f804255b48c851226dc8a41f96ae76b47",
+          "sha1": "8c6de2de14663c2f33b4207172bf3608dde7cd7f",
+          "md5": "57c8963f2cce4557be098c3f89f28f16"
+        }
+      ]
+    }
+  ]
+}

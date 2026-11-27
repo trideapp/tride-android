@@ -36,7 +36,8 @@
  *     normals, or from the runtime's MikkTSpace tangents of a normal-mapped mesh) / UV0 / COLOR (HALF4,
  *     UV1 aliases it) / CUSTOM0 (flow, trunks only). FFI byte streams are little-endian and wrapped as-is.
  *   - Built-in materials come from the AAR's `assets/materials/<name>.filamat` (opengl + vulkan in one
- *     package); a missing package degrades with one log line, never a crash.
+ *     package); a missing package degrades with one log line, never a crash. They and the node-material
+ *     packages are the shared engine's (`SharedEngine`: kept / counted); the instances are this scene's.
  *   - Every scene picture goes through gltfio's stb: palette maps (one stb cache per picture
  *     and colour space), node-material array layers through `scenePictureRgba` (`StbImage`, the same
  *     `stbi_load_from_memory`; `BitmapFactory` differed on JPEG by up to 3 levels). A
@@ -62,7 +63,6 @@
  */
 package studio.tride.kit
 
-import android.util.Log
 import com.google.android.filament.Box
 import com.google.android.filament.Engine
 import com.google.android.filament.EntityManager
@@ -111,7 +111,7 @@ import studio.tride.kit.MeshPacking.directOf
 import studio.tride.kit.MeshPacking.floatsOf
 import studio.tride.kit.MeshPacking.packColors
 
-private const val TAG = "tride.gen"
+private const val TAG = TrideLog.GEN
 private const val PULSE_ROW_FLOATS = 8
 /** Most pulse rows a table holds: the core's `PULSE_CAPACITY_MAX`, as iOS (`PulseCapacityTest` checks it). */
 internal const val PULSE_CAPACITY_MAX = 256
@@ -146,7 +146,8 @@ internal class PaletteLook(val slug: String?, val params: TrideMaterialParams?)
 internal class SkinDrawInfo(val part: Int, val bones: Int, val own: Boolean, val primitives: Int, val center: FloatArray, val halfExtent: FloatArray)
 
 internal class FilamentGenerators(
-    private val engine: Engine,
+    /** The process's engine: built-in and node-material packages are its, shared by the views. */
+    private val shared: SharedEngine,
     private val scene: Scene,
     /** `assets/materials/<name>.filamat` bytes; `null` = the package is missing. */
     private val materialPackage: (String) -> ByteArray?,
@@ -155,7 +156,7 @@ internal class FilamentGenerators(
     private val entityForPlace: (Int) -> Int?,
     private val onSceneMutated: () -> Unit,
     /** A loading problem the host should hear about (subject, message); logged by the receiver. */
-    private val report: (String, String) -> Unit = { _, message -> Log.w(TAG, message) },
+    private val report: (String, String) -> Unit = { _, message -> TrideLog.warning(TAG) { message } },
     /** The app's picture `(input, revision)` from the host's store; `null` = not there. */
     private val hostPixels: (String, Long) -> HostPixels? = { _, _ -> null },
     /** An app picture that could not be uploaded (input, reason): the host marks the input failed. */
@@ -163,16 +164,17 @@ internal class FilamentGenerators(
     /** gltfio's ubershader provider (the bridge's): the record's standard-form instances; `null` = none. */
     private val ubershaders: UbershaderProvider? = null,
 ) {
+    private val engine: Engine get() = shared.engine
+
     // ---- built-in materials -----------------------------------------------------------------
+    /** What this scene asked for by name (a missing or refused one asked once); the materials are the engine's. */
     private val materials = HashMap<String, Material?>()
     private fun material(name: String): Material? = materials.getOrPut(name) {
-        val bytes = materialPackage(name)
-        if (bytes == null || bytes.isEmpty()) {
-            warnOnce("material:$name", "built-in material '$name' is missing from the library's assets — its meshes are skipped")
-            return@getOrPut null
-        }
         try {
-            Material.Builder().payload(direct(bytes), bytes.size).build(engine)
+            shared.builtIn(name) { materialPackage(name) } ?: run {
+                warnOnce("material:$name", "built-in material '$name' is missing from the library's assets — its meshes are skipped")
+                null
+            }
         } catch (e: Throwable) {
             warnOnce("material:$name", "built-in material '$name' failed to build: ${e.message}"); null
         }
@@ -554,7 +556,7 @@ internal class FilamentGenerators(
         val now = (before + gaps).distinct()
         if (now.size == before.size) return
         standardGaps[slug] = now
-        Log.w(TAG, "standard material '$slug' draws without its ${now.joinToString(", ")}")
+        TrideLog.warning(TAG) { "standard material '$slug' draws without its ${now.joinToString(", ")}" }
     }
 
     /** gltfio's stb provider: the decoder its `ResourceLoader` uses, made on the first picture. */
@@ -876,9 +878,9 @@ internal class FilamentGenerators(
         val key = graphKeyOf(slug, family)
         if (graphs.containsKey(key)) return true
         val material = try {
-            Material.Builder().payload(direct(packageBytes), packageBytes.size).build(engine)
+            shared.acquirePackage(packageBytes)
         } catch (e: Throwable) {
-            Log.w(TAG, "node material '$slug' ($family): Filament refused the package: ${e.message}")
+            TrideLog.warning(TAG) { "node material '$slug' ($family): Filament refused the package: ${e.message}" }
             return false
         }
         val g = GraphEntry(material)
@@ -970,7 +972,6 @@ internal class FilamentGenerators(
             return null
         }
         hostTextures[key] = HostTexture(tex, 1)
-        Log.i(TAG, "image input '${key.input}': picture ${key.revision} ${px.width}x${px.height} uploaded (${if (key.srgb) "sRGB" else "linear"})")
         return tex
     }
 
@@ -1005,7 +1006,7 @@ internal class FilamentGenerators(
             for (mi in g.live) engine.destroyMaterialInstance(mi)
             for (a in g.arrays) engine.destroyTexture(a.texture)
             for (s in g.slots) engine.destroyTexture(s.placeholder.texture)
-            engine.destroyMaterial(g.material)
+            shared.releasePackage(g.material)
         }
         graphs.clear()
         for (t in hostTextures.values) engine.destroyTexture(t.texture)
@@ -1621,7 +1622,7 @@ internal class FilamentGenerators(
         for ((i, group) in g.groups.withIndex()) {
             val start = group.indexStart.toInt(); val n = group.indexCount.toInt()
             if (n == 0) continue
-            if (start + n > indexCount) { Log.e(TAG, "generated mesh '$key': group $i [$start, +$n) past $indexCount indices — skipped"); continue }
+            if (start + n > indexCount) { TrideLog.warningOnce(TAG) { "generated mesh '$key': group $i [$start, +$n) past $indexCount indices — skipped" }; continue }
             var mi = trunk
             if (i > 0) {
                 val own = group.material?.takeIf { it.isNotEmpty() }?.let { lookFor(it, group.materialParams, host) }
@@ -1922,8 +1923,7 @@ internal class FilamentGenerators(
                 buildBatchRenderable(batch, entry)
             }
             engine.destroyVertexBuffer(existing.vb); engine.destroyIndexBuffer(existing.ib)
-            if (Log.isLoggable(TAG, Log.DEBUG)) Log.d(TAG, "module mesh '$uid' replaced: $vertexCount verts, $indexCount indices")
-        } else Log.i(TAG, "module mesh '$uid': $vertexCount verts, $indexCount indices")
+        } else TrideLog.debug(TAG) { "module mesh '$uid': $vertexCount verts, $indexCount indices" }
         return true
     }
 
@@ -2024,7 +2024,7 @@ internal class FilamentGenerators(
             if (hideChunks(key, 0)) onSceneMutated()
             return 0
         }
-        val mesh = moduleMeshes[uid] ?: run { Log.e(TAG, "module '$id $symbol': mesh '$uid' not registered"); return 0 }
+        val mesh = moduleMeshes[uid] ?: run { TrideLog.warningOnce(TAG) { "module '$id $symbol': mesh '$uid' not registered" }; return 0 }
         var drawn = 0
         var chunk = 0
         while (drawn < total) {
@@ -2160,7 +2160,8 @@ internal class FilamentGenerators(
         barkInstance?.let { engine.destroyMaterialInstance(it) }; barkInstance = null
         destroyMaterialGraphs()
         whiteTexture?.let { engine.destroyTexture(it) }; whiteTexture = null
-        for (m in materials.values) m?.let { engine.destroyMaterial(it) }; materials.clear()
+        // The built-in materials are the engine's: they stay for the next scene.
+        materials.clear()
     }
 }
 

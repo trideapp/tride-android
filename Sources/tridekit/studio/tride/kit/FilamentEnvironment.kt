@@ -4,12 +4,14 @@
  * background eraser (`tride-sky-erase`) — from `TrideScene.environmentFrame()`; every number is the core's.
  *
  * Internal API:
- *   - `FilamentEnvironment(engine, scene, view, materialPackage, problem)`; `apply(frame, maps)` — a scene's
+ *   - `FilamentEnvironment(shared, scene, view, materialPackage, problem)`; `apply(frame, maps)` — a scene's
  *     maps, values and blend mode; `update(frame)` — the same scene's values after a write; `dispose()`.
  *   - `EnvironmentMaps(light, sky)` — the KTX bytes of the frame's maps (`<map>_ibl.ktx`, `<map>_skybox.ktx`).
  *
  * Non-obvious constraints:
- *   - Light: a map → `KTX1Loader.createIndirectLight` (its SH and prefiltered cube); a colour → `irradiance(1,
+ *   - Light: a map → the engine's cube and SH of its KTX (`SharedEngine.acquireIblMap`, shared by the views
+ *     that light with it) under this view's own `IndirectLight` (as `KTX1Loader.createIndirectLight` builds
+ *     it), so intensity and rotation stay the view's; a colour → `irradiance(1,
  *     rgb)` + a 1×1 cube of it (research `rt414-environment-model.md` §1); none → no `IndirectLight`. Intensity
  *     and rotation are the frame's (`lux`, column-major `rotation`); Filament turns the frame by the light's
  *     rotation and the core gives the shown map's turn in that world.
@@ -18,6 +20,7 @@
  *     `frame.glass`, the eraser (blended pass, priority 0, before the scene's transparent objects) replaces it by
  *     `frame.sky` where the depth is the far plane (§5). Otherwise `OPAQUE` and the sky draws `frame.sky`.
  *   - A package missing from the library or a map without its file is a load problem, never a silent black.
+ *   - The sky and eraser packages are the engine's (`SharedEngine.builtIn`); their instances are this view's.
  *   - Maps are a scene's: `update` keeps the textures `apply` made. The web player's twin is
  *     `packages/player/src/engine/filament-environment.ts`.
  */
@@ -28,7 +31,6 @@ import com.google.android.filament.Engine
 import com.google.android.filament.EntityManager
 import com.google.android.filament.IndexBuffer
 import com.google.android.filament.IndirectLight
-import com.google.android.filament.Material
 import com.google.android.filament.MaterialInstance
 import com.google.android.filament.RenderableManager
 import com.google.android.filament.Scene
@@ -52,7 +54,7 @@ private const val ERASER_PRIORITY = 0
 private val IDENTITY3 = listOf(1.0, 0.0, 0.0, 0.0, 1.0, 0.0, 0.0, 0.0, 1.0)
 
 internal class FilamentEnvironment(
-    private val engine: Engine,
+    private val shared: SharedEngine,
     private val scene: Scene,
     private val view: View,
     /** `tride/materials/<name>.filamat` bytes of the library. */
@@ -60,8 +62,11 @@ internal class FilamentEnvironment(
     /** A load problem (subject, message). */
     private val problem: (String, String) -> Unit,
 ) {
-    private class Light(val kind: String, val ibl: IndirectLight?, val cube: Texture?, val rgb: List<Double>)
-    private class FullScreen(val material: Material, val mi: MaterialInstance, val entity: Int)
+    /** [cube] is this view's (a colour's); [map] the engine's (a lighting map's). */
+    private class Light(val kind: String, val ibl: IndirectLight?, val cube: Texture?, val rgb: List<Double>, val map: SharedEngine.IblMap? = null)
+    private class FullScreen(val mi: MaterialInstance, val entity: Int)
+
+    private val engine: Engine get() = shared.engine
 
     private var light: Light? = null
     private var skyTexture: Texture? = null
@@ -110,7 +115,6 @@ internal class FilamentEnvironment(
             engine.destroyEntity(full.entity)
             EntityManager.get().destroy(full.entity)
             engine.destroyMaterialInstance(full.mi)
-            engine.destroyMaterial(full.material)
         }
         sky = null; eraser = null; eraserShown = false
         skyTexture?.let { engine.destroyTexture(it) }; skyTexture = null
@@ -134,16 +138,18 @@ internal class FilamentEnvironment(
                     problem("environment", "the lighting map has no KTX: the scene is lit by its lights only")
                     Light("none", null, null, emptyList())
                 } else {
-                    val bundle = KTX1Loader.createIndirectLight(engine, direct(ktx))
-                    val ibl = bundle.indirectLight
-                    if (ibl == null) {
+                    val map = shared.acquireIblMap(ktx)
+                    if (map == null) {
                         problem("environment", "the lighting map's KTX carries no SH (${ktx.size} bytes): the scene is lit by its lights only")
-                        bundle.cubemap?.let { engine.destroyTexture(it) }
                         Light("none", null, null, emptyList())
                     } else {
-                        ibl.intensity = l.lux.toFloat()
-                        ibl.setRotation(floats(l.rotation, IDENTITY3))
-                        Light("map", ibl, bundle.cubemap, emptyList())
+                        val ibl = IndirectLight.Builder()
+                            .reflections(map.cube)
+                            .irradiance(3, map.sh)
+                            .intensity(l.lux.toFloat())
+                            .rotation(floats(l.rotation, IDENTITY3))
+                            .build(engine)
+                        Light("map", ibl, null, emptyList(), map)
                     }
                 }
             }
@@ -186,6 +192,7 @@ internal class FilamentEnvironment(
         scene.indirectLight = null
         live.ibl?.let { engine.destroyIndirectLight(it) }
         live.cube?.let { engine.destroyTexture(it) }
+        live.map?.let { shared.releaseIblMap(it) }
         light = null
     }
 
@@ -223,11 +230,10 @@ internal class FilamentEnvironment(
     private fun black(): Texture = blackCube ?: solidCube(listOf(0.0, 0.0, 0.0)).also { blackCube = it }
 
     private fun fullScreen(name: String, priority: Int): FullScreen? {
-        val bytes = materialPackage(name) ?: run {
+        val material = shared.builtIn(name) { materialPackage(name) } ?: run {
             problem("environment", "the library has no '$name' material: nothing is drawn behind the scene")
             return null
         }
-        val material = Material.Builder().payload(direct(bytes), bytes.size).build(engine)
         val mi = material.createInstance()
         val (vertices, indices) = triangle()
         val entity = EntityManager.get().create()
@@ -240,7 +246,7 @@ internal class FilamentEnvironment(
             .receiveShadows(false)
             .priority(priority)
             .build(engine, entity)
-        return FullScreen(material, mi, entity)
+        return FullScreen(mi, entity)
     }
 
     /** Clip space, z = 1 (the far plane), as Filament draws its Skybox; shared by the sky and the eraser. */

@@ -1,13 +1,17 @@
 /**
- * Kotlin over Filament-Android — the applier a frame lands on: engine / view / scene / cameras, the scene
+ * Kotlin over Filament-Android — the applier a frame lands on: view / scene / cameras on the process's shared
+ * engine (`SharedEngine`), drawn through the view's `SurfaceTarget`, the scene
  * built from the places of the core's scene record, the place → entity map, node TRS / visibility / morph
  * weights, lights and cameras on their nodes' places, the scene's environment, the view's render settings
  * and the render loop.
  *
  * Public API:
- *   - `attachSurface` (also to make the swap chain again on a resized surface) / `detachSurface` / `resize`,
+ *   - `FilamentSceneBridge(backend, target)` — one scene's bridge; [target] is the view's swap chain and Renderer
+ *     a scene before drew to (a new one when none); `takeTarget()` hands it to the next scene's bridge.
+ *   - `attachSurface` (also to make the swap chain again on a resized surface) / `detachSurface` / `giveBackSurface`
+ *     (swap chain, Renderer and pixelation targets go, the window stays) / `hasSwapChain` / `holdsGpu` / `resize`,
  *     `loadPlaces(places)`, `render(frameTimeNanos)`, `setFrameRate(refreshRate, interval)` (the view's pace for
- *     Filament's dynamic resolution, `RenderRate.filamentPace`), `dispose`.
+ *     Filament's dynamic resolution, `RenderRate.filamentPace`), `dispose` (the engine stays: it is the process's).
  *   - Nodes: `entityForPlace`, `setNodeTRS`, `setNodeVisible`, `morphTargetCount`, `setMorphWeights`,
  *     `worldTransform` (checks).
  *   - Lights: `addLights`, `setLight*`; cameras: `addCameras`, `setActiveCamera`, `setCamera*`,
@@ -54,25 +58,19 @@
  */
 package studio.tride.kit
 
-import android.util.Log
 import android.view.Surface
 import com.google.android.filament.Camera
 import com.google.android.filament.ColorGrading
 import com.google.android.filament.ToneMapper
 import com.google.android.filament.Engine
 import com.google.android.filament.EntityManager
-import com.google.android.filament.Filament
 import com.google.android.filament.LightManager
-import com.google.android.filament.Material
 import com.google.android.filament.Renderer
 import com.google.android.filament.Scene
-import com.google.android.filament.SwapChain
 import com.google.android.filament.Texture
 import com.google.android.filament.View
 import com.google.android.filament.Viewport
-import com.google.android.filament.gltfio.Gltfio
 import com.google.android.filament.gltfio.UbershaderProvider
-import com.google.android.filament.utils.Utils
 import studio.tride.core.TrideAntiAliasing
 import studio.tride.core.TrideBloomOptions
 import studio.tride.core.TrideDefaultFraming
@@ -87,17 +85,10 @@ import studio.tride.core.TrideToneMapper
 import studio.tride.core.toneCurve as coreToneCurve
 import studio.tride.kit.record.RecordPlace
 import studio.tride.core.pixelationGrid as corePixelationGrid
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
 import kotlin.math.max
 import kotlin.math.sqrt
 
-private const val TAG = "tride.bridge"
-/** Filament's 1D colour grading LUT — Standard comes out byte for byte (the 3D LUT loses the top). */
-private const val ONE_DIMENSIONAL_LUT = "engine.color_grading.use_1d_lut"
-
-/** Up to five suns light the scene, the brightest casts the shadow (Filament's rule). */
-private fun engineConfig() = Engine.Config().apply { enableMultipleDirectionalLights = true }
+private const val TAG = TrideLog.BRIDGE
 
 /** The default camera's lens before the core framed the scene: 45°, as the core's framing and iOS. */
 private const val DEFAULT_VIEW_YFOV = Math.PI / 4
@@ -147,28 +138,23 @@ internal class HostCameraPose(val position: DoubleArray, val rotation: DoubleArr
 
 internal class FilamentSceneBridge(
     preferredBackend: Engine.Backend,
+    target: SurfaceTarget? = null,
 ) {
     companion object {
-        private val initialised = lazy {
-            Filament.init()
-            Gltfio.init()
-            Utils.init()
-            true
-        }
         private const val MAX_SATURATION = 2f
         /** Said once a process: the GPU's targets cannot hold half floats (R-DegradeNoticeWarnOnce). */
         @Volatile private var warnedNoFloatTargets = false
     }
 
-    val engine: Engine
-    val backend: Engine.Backend
-    /**
-     * The engine draws with the emulator's GL (ANGLE over SwiftShader, or the host-GPU translator), decided by the
-     * backend the engine was made on (the OpenGL fallback included), not by the device: the emulator's Vulkan draws
-     * shadow maps, its GL draws any frame with one black.
-     */
-    private val emulatorGl: Boolean
-    private val renderer: Renderer
+    /** The process's engine and what its views share; this bridge is one view on it. */
+    internal val shared: SharedEngine = SharedEngine.acquire(preferredBackend)
+    val engine: Engine get() = shared.engine
+    val backend: Engine.Backend get() = shared.backend
+    /** The engine draws with the emulator's GL: no shadows (`SharedEngine.emulatorGl`). */
+    private val emulatorGl: Boolean get() = shared.emulatorGl
+    /** The view's swap chain and Renderer; `null` once handed to the next scene's bridge (`takeTarget`). */
+    private var target: SurfaceTarget? = target ?: SurfaceTarget(shared)
+    private val surface: SurfaceTarget get() = target ?: error("the bridge handed its surface on")
     /** The Filament scene — for the generators applier that lives beside the bridge. */
     val filamentScene: Scene
     /** Procedural generators (trunks, module batches, pulses) — attached by `TrideKitScene` with the runtime's assets. */
@@ -177,7 +163,6 @@ internal class FilamentSceneBridge(
     private val view: View
     private val defaultCameraEntity: Int
     private val defaultCamera: Camera
-    private var swapChain: SwapChain? = null
     private var width = 1
     private var height = 1
     /** Buffer pixels per dp (the scene's point): the screen's density, or the host's pixel scale. */
@@ -188,15 +173,17 @@ internal class FilamentSceneBridge(
     /** The scene's diagnostics sink for loading problems (subject, message); logcat when none. */
     var onLoadProblem: ((String, String) -> Unit)? = null
     private fun loadProblem(subject: String, message: String) {
-        onLoadProblem?.invoke(subject, message) ?: Log.w(TAG, message)
+        onLoadProblem?.invoke(subject, message) ?: TrideLog.warning(TAG) { message }
     }
 
     /** A frame is due: a tick moved the scene, a resize, an attached surface. */
     var needsRender = true
 
-    private val materialProvider: UbershaderProvider
-    /** gltfio's ubershader provider: the record's standard-form instances are made through it. */
-    internal val ubershaders: UbershaderProvider get() = materialProvider
+    /** The view draws with temporal anti-aliasing: its still frames differ. */
+    val temporalAntiAliasing: Boolean get() = view.temporalAntiAliasingOptions.enabled
+
+    /** gltfio's ubershader provider (the engine's): the record's standard-form instances are made through it. */
+    internal val ubershaders: UbershaderProvider get() = shared.ubershaders
 
     private class NodeState(val entity: Int, var t: DoubleArray, var r: DoubleArray, var s: DoubleArray)
     private val nodeStates = ArrayList<NodeState>()
@@ -256,23 +243,6 @@ internal class FilamentSceneBridge(
     private var poseTaken = false
 
     init {
-        check(initialised.value)
-        var created: Engine? = null
-        var used = preferredBackend
-        try {
-            created = Engine.Builder().backend(preferredBackend).config(engineConfig()).feature("backend.disable_parallel_shader_compile", true).feature(ONE_DIMENSIONAL_LUT, true).build()
-        } catch (e: Throwable) {
-            Log.e(TAG, "Engine($preferredBackend) failed: ${e.message}")
-        }
-        if (created == null && preferredBackend != Engine.Backend.OPENGL) {
-            Log.w(TAG, "Engine($preferredBackend) unavailable — falling back to OPENGL")
-            used = Engine.Backend.OPENGL
-            created = Engine.Builder().backend(Engine.Backend.OPENGL).config(engineConfig()).feature("backend.disable_parallel_shader_compile", true).feature(ONE_DIMENSIONAL_LUT, true).build()
-        }
-        engine = created ?: error("Filament Engine could not be created on any backend")
-        backend = used
-        emulatorGl = used == Engine.Backend.OPENGL && isEmulator()
-        renderer = engine.createRenderer()
         filamentScene = engine.createScene()
         defaultCameraEntity = EntityManager.get().create()
         defaultCamera = engine.createCamera(defaultCameraEntity)
@@ -285,20 +255,11 @@ internal class FilamentSceneBridge(
         view.setShadowingEnabled(shadowing)
         view.setScreenSpaceRefractionEnabled(true)
         initialRenderOptions = ViewRenderOptions(view, shadowing)
-        // Clear the colour buffer every frame to (0, 0, 0, 0) — nothing behind the scene's environment, so a
-        // transparent stack shows what is under the view. Cleared at all: Filament draws only the
-        // viewport into its 16-padded post-processing buffers, and the padding left uncleared is undefined on
-        // tile-based GPUs — TAA / DOF / bloom / SSAO pull it into the right / top edges as flickering blobs.
-        renderer.clearOptions = Renderer.ClearOptions().apply {
-            clearColor = doubleArrayOf(0.0, 0.0, 0.0, 0.0)
-            clear = true
-            discard = true
-        }
-
-        materialProvider = UbershaderProvider(engine)
         resize(width, height)
-        Log.i(TAG, "Filament ${BuildConfig.FILAMENT_VERSION} engine on ${engine.backend}")
     }
+
+    /** The view's swap chain and Renderer for the next scene's bridge; this one draws no more. */
+    fun takeTarget(): SurfaceTarget? = target.also { target = null }
 
     // ---------------------------------------------------------------------------------------------
     // Surface / size / render loop
@@ -306,30 +267,43 @@ internal class FilamentSceneBridge(
 
     /**
      * The swap chain on [surface], made anew: a new surface, or the same one resized (Vulkan reads its size
-     * when the swap chain is made). The one before leaves the window first, waited for: Android lets one
-     * producer connect to a window at a time.
+     * when the swap chain is made). The one before leaves the window first, in the engine's command order.
      */
     fun attachSurface(surface: Surface, flags: Long) {
         if (disposed) return
-        if (swapChain != null) releaseSwapChain()
-        swapChain = engine.createSwapChain(surface, flags)
+        this.surface.attach(surface, flags)
         needsRender = true
     }
 
-    fun detachSurface() {
+    /** The window goes; [waitForDriver] = the driver must be out of it on return (a SurfaceView's, `SurfaceTarget`). */
+    fun detachSurface(waitForDriver: Boolean = true) {
         if (disposed) return
         // The app went to the background (or the view off screen): the pixelation targets go with the
         // surface; the first frame on the next one builds them again.
-        pixelation?.off()
-        pixelationInputs = null
-        releaseSwapChain()
+        dropPixelationTargets()
+        target?.detach(waitForDriver)
     }
 
-    private fun releaseSwapChain() {
-        swapChain?.let { engine.destroySwapChain(it) }
-        swapChain = null
-        engine.flushAndWait()
+    /**
+     * The view is far from the screen, or the system asked for memory: the swap chain, the Renderer and the
+     * pixelation targets go, the window and the scene stay; `attachSurface` makes them again.
+     */
+    fun giveBackSurface() {
+        if (disposed) return
+        dropPixelationTargets()
+        target?.giveBack()
     }
+
+    private fun dropPixelationTargets() {
+        pixelation?.off()
+        pixelationInputs = null
+    }
+
+    /** A swap chain to draw on; a swap chain or a Renderer held (checks and the view's distance rule). */
+    val hasSwapChain: Boolean get() = target?.swapChain != null
+    val holdsGpu: Boolean get() = target?.holdsGpu == true
+    /** Swap chains made on the view so far (checks). */
+    internal val swapChainsMade: Int get() = target?.swapChainsMade ?: 0
 
     /** The buffer is [w] × [h] pixels, [pixelsPerPoint] of them a dp (pixelation's block side). */
     fun resize(w: Int, h: Int, pixelsPerPoint: Float = this.pixelsPerPoint) {
@@ -350,41 +324,24 @@ internal class FilamentSceneBridge(
      * GPU time of the frames Filament timed (`Renderer.getFrameInfoHistory`, at most its last 16): frame id →
      * milliseconds — frame-cost probes (the pixelation pass's cost on a phone).
      */
-    internal fun gpuFrameMillis(): Map<Int, Double> {
-        if (disposed) return emptyMap()
-        val history = Array(renderer.maxFrameHistorySize) { Renderer.FrameInfo() }
-        val n = renderer.getFrameInfoHistory(history)
-        return (0 until n).map { history[it] }.filter { it.gpuFrameDuration > 0 }.associate { it.frameId to it.gpuFrameDuration / 1e6 }
-    }
+    internal fun gpuFrameMillis(): Map<Int, Double> = if (disposed) emptyMap() else target?.gpuFrameMillis().orEmpty()
 
     /** Holds Filament's driver thread for [nanos] — a driver stuck in a long frame, as SwiftShader's first (tests). */
-    internal fun stallDriver(nanos: Long) { if (!disposed) renderer.pauseRenderThread(nanos) }
+    internal fun stallDriver(nanos: Long) { if (!disposed) target?.stallDriver(nanos) }
 
     /** The display refresh rate and frame interval Filament holds (`setFrameRate`); 60 and 1 = its own defaults. */
-    var displayRefreshRate: Float = 60f
-        private set
-    var frameInterval: Int = 1
-        private set
+    val displayRefreshRate: Float get() = target?.displayRefreshRate ?: 60f
+    val frameInterval: Int get() = target?.frameInterval ?: 1
 
     /**
      * The view's pace (`RenderRate.filamentPace`): dynamic resolution aims at `1000 × interval / refreshRate` ms of
-     * GPU time. Kept for the bridge's life (a surface going and coming keeps it).
+     * GPU time. Held by the view's Renderer: a surface going and coming, and the next scene, keep it.
      */
     fun setFrameRate(refreshRate: Float, interval: Int) {
-        val hz = if (refreshRate > 0f) refreshRate else 60f
-        val n = interval.coerceIn(1, 255)
-        if ((hz == displayRefreshRate && n == frameInterval) || disposed) return
-        displayRefreshRate = hz
-        frameInterval = n
-        renderer.setDisplayInfo(Renderer.DisplayInfo().apply { this.refreshRate = hz })
-        // Every field but the interval at the engine's own defaults (the Java class's differ from them).
-        renderer.setFrameRateOptions(Renderer.FrameRateOptions().apply {
-            this.interval = n.toFloat()
-            headRoomRatio = 0f
-            scaleRate = 1f / 8f
-            history = 15
-        })
+        if (!disposed) target?.setFrameRate(refreshRate, interval)
     }
+
+    private val renderer: Renderer get() = surface.renderer ?: error("the view holds no Renderer now (given back far from the screen)")
 
     /** The frame-rate options and refresh rate the renderer holds now (checks). */
     internal val frameRateOptionsShown: Renderer.FrameRateOptions get() = renderer.frameRateOptions
@@ -392,8 +349,9 @@ internal class FilamentSceneBridge(
 
     /** One frame when a swap chain is attached; `false` when Filament skipped it (too soon after the last). */
     fun render(frameTimeNanos: Long): Boolean {
-        val sc = swapChain ?: return false
         if (disposed) return false
+        val renderer = target?.renderer ?: return false
+        val sc = target?.swapChain ?: return false
         followCameraNodes()
         updateFocusTarget()
         syncPixelation()
@@ -408,10 +366,10 @@ internal class FilamentSceneBridge(
         return true
     }
 
+    /** The scene's objects go; the view's surface target too unless handed on (`takeTarget`); the engine stays. */
     fun dispose() {
         if (disposed) return
         disposed = true
-        releaseSwapChain()
         generators = null // the setter disposes it
         environment?.dispose()
         environment = null
@@ -432,8 +390,6 @@ internal class FilamentSceneBridge(
         }
         placeEntities.clear()
         placeEntitySet.clear()
-        materialProvider.destroyMaterials()
-        materialProvider.destroy()
         // The pixelation pass lets go of the scene view and frees its targets while the view is alive.
         pixelation?.destroy()
         pixelation = null
@@ -442,10 +398,11 @@ internal class FilamentSceneBridge(
         colorGrading?.let { engine.destroyColorGrading(it) }
         colorGrading = null
         engine.destroyScene(filamentScene)
-        engine.destroyRenderer(renderer)
         engine.destroyCameraComponent(defaultCameraEntity)
         EntityManager.get().destroy(defaultCameraEntity)
-        engine.destroy()
+        target?.destroy()
+        target = null
+        shared.release()
     }
 
     // ---------------------------------------------------------------------------------------------
@@ -478,7 +435,7 @@ internal class FilamentSceneBridge(
         poseTaken = false
         frameDefaultCamera()
         needsRender = true
-        Log.i(TAG, "scene built from ${places.size} places")
+        TrideLog.debug(TAG) { "scene built from ${places.size} places" }
     }
 
     /** Pose and lens of the default camera from the core's framing at the buffer's aspect. */
@@ -693,7 +650,7 @@ internal class FilamentSceneBridge(
             filamentScene.addEntity(entity)
             lightEntities[spec.id] = entity
             val w = tm.getWorldTransform(tm.getInstance(entity), FloatArray(16))
-            Log.i(TAG, "addLights: '${spec.id}' on place ${spec.place} world=(${w[12]}, ${w[13]}, ${w[14]})")
+            TrideLog.debug(TAG) { "addLights: '${spec.id}' on place ${spec.place} world=(${w[12]}, ${w[13]}, ${w[14]})" }
         }
         needsRender = true
     }
@@ -734,7 +691,6 @@ internal class FilamentSceneBridge(
         val li = lightInstance(id) ?: return
         val lm = engine.lightManager
         if (isPunctual(lm.getType(li))) lm.setIntensityCandela(li, intensity.toFloat()) else lm.setIntensity(li, intensity.toFloat())
-        if (Log.isLoggable(TAG, Log.DEBUG)) Log.d(TAG, "light '$id' ${lm.getType(li)} intensity=$intensity → ${lm.getIntensity(li)}")
         needsRender = true
     }
 
@@ -749,7 +705,7 @@ internal class FilamentSceneBridge(
         if (!emulatorGl || !requested) return requested
         if (!warnedShadows) {
             warnedShadows = true
-            Log.w(TAG, "emulator GL: shadow maps render the frame black here — drawing without shadows")
+            TrideLog.warningOnce(TAG) { "emulator GL: shadow maps render the frame black here — drawing without shadows" }
         }
         return false
     }
@@ -848,7 +804,7 @@ internal class FilamentSceneBridge(
             follow(rec)
             applyProjection(rec)
             val w = tm.getWorldTransform(tm.getInstance(entity), FloatArray(16))
-            Log.i(TAG, "addCameras: '${spec.id}' on place ${spec.place} world=(${w[12]}, ${w[13]}, ${w[14]}) yfov=${rec.yfov}")
+            TrideLog.debug(TAG) { "addCameras: '${spec.id}' on place ${spec.place} world=(${w[12]}, ${w[13]}, ${w[14]}) yfov=${rec.yfov}" }
         }
     }
 
@@ -892,10 +848,10 @@ internal class FilamentSceneBridge(
                 view.camera = cam
                 activeCameraId = id
                 needsRender = true
-                Log.i(TAG, "setActiveCamera: '$id'")
+                TrideLog.info(TAG) { "setActiveCamera: '$id'" }
                 return
             }
-            Log.w(TAG, "setActiveCamera: '$id' not registered — default camera")
+            TrideLog.warningOnce(TAG) { "setActiveCamera: '$id' not registered — default camera" }
         }
         view.camera = defaultCamera
         activeCameraId = null
@@ -934,7 +890,7 @@ internal class FilamentSceneBridge(
     fun applyEnvironment(frame: TrideEnvironmentFrame, maps: EnvironmentMaps) {
         if (disposed) return
         val env = environment ?: FilamentEnvironment(
-            engine, filamentScene, view, { name -> materialPackage?.invoke(name) }, ::loadProblem,
+            shared, filamentScene, view, { name -> materialPackage?.invoke(name) }, ::loadProblem,
         ).also { environment = it }
         env.apply(frame, maps)
         needsRender = true
@@ -1057,17 +1013,13 @@ internal class FilamentSceneBridge(
         }
         val pass = pixelation ?: buildPixelation() ?: return
         if (pass.configure(grid, width, height)) needsRender = true
-        Log.i(TAG, "pixelation: ${width}x$height size=$size ppp=$pixelsPerPoint -> block ${grid.block} shift ${grid.shiftX},${grid.shiftY} grid ${grid.columns}x${grid.rows}")
     }
 
     private fun buildPixelation(): FilamentPixelation? {
         if (pixelationUnavailable) return null
-        val bytes = materialPackage?.invoke("tride-pixelate")
-        val material = bytes?.takeIf { it.isNotEmpty() }?.let {
-            runCatching { Material.Builder().payload(ByteBuffer.allocateDirect(it.size).order(ByteOrder.nativeOrder()).put(it).apply { rewind() }, it.size).build(engine) }
-                .onFailure { e -> Log.w(TAG, "pixelation: the pass material failed to build: ${e.message}") }
-                .getOrNull()
-        }
+        val material = runCatching { shared.builtIn("tride-pixelate") { materialPackage?.invoke("tride-pixelate") } }
+            .onFailure { e -> TrideLog.warning(TAG) { "pixelation: the pass material failed to build: ${e.message}" } }
+            .getOrNull()
         if (material == null) {
             pixelationUnavailable = true
             loadProblem("pixelation", "the pixelation material is missing from the library — the frame is drawn without blocks")
@@ -1076,7 +1028,7 @@ internal class FilamentSceneBridge(
         val floatTargets = Texture.isTextureFormatMipmappable(engine, Texture.InternalFormat.RGBA16F)
         if (!floatTargets && !warnedNoFloatTargets) {
             warnedNoFloatTargets = true
-            Log.w(TAG, "pixelation: this GPU renders no RGBA16F targets — block means pass through 8-bit buffers (up to 1/255 off)")
+            TrideLog.warning(TAG) { "pixelation: this GPU renders no RGBA16F targets — block means pass through 8-bit buffers (up to 1/255 off)" }
         }
         return FilamentPixelation(engine, view, material, floatTargets).also { pixelation = it }
     }
@@ -1124,7 +1076,7 @@ internal class FilamentSceneBridge(
             TrideShadowType.VSM -> View.ShadowType.VSM
             TrideShadowType.DPCF -> {
                 // Deprecated in Filament 1.76+: the engine draws PCSS; said once.
-                if (!warnedDpcf) { warnedDpcf = true; Log.w(TAG, "shadowType DPCF is deprecated in Filament 1.76+ — drawn as PCSS") }
+                if (!warnedDpcf) { warnedDpcf = true; TrideLog.warning(TAG) { "shadowType DPCF is deprecated in Filament 1.76+ — drawn as PCSS" } }
                 View.ShadowType.DPCF
             }
             TrideShadowType.PCSS -> View.ShadowType.PCSS
@@ -1193,7 +1145,7 @@ internal class FilamentSceneBridge(
             gamutMapping = s.toneMapping.gamutMapping,
             saturation = liveSaturation?.toFloat()?.coerceIn(0f, MAX_SATURATION) ?: authoredSaturation,
         ))
-        Log.i(TAG, "applyRenderSettings: aa=${s.antiAliasing} toneMapping=${s.toneMapping.`operator`} exposure=${s.toneMapping.exposure} bloom=${s.bloom.enabled} ssao=${s.ssao.enabled} dof=${s.depthOfField.enabled}")
+        TrideLog.debug(TAG) { "applyRenderSettings: aa=${s.antiAliasing} toneMapping=${s.toneMapping.`operator`} exposure=${s.toneMapping.exposure} bloom=${s.bloom.enabled} ssao=${s.ssao.enabled} dof=${s.depthOfField.enabled}" }
     }
 
     /** Whether the view draws a colour grading of the bridge's own (`null` = Filament's default) — what a test reads back. */
@@ -1229,7 +1181,7 @@ internal class FilamentSceneBridge(
         saturationWritten?.let { setSaturation(it) }
         fogWritten?.let { setFogColor(it[0].toDouble(), it[1].toDouble(), it[2].toDouble()) }
         needsRender = true
-        Log.i(TAG, "restoreInitialRenderSettings: the view's own options again")
+        TrideLog.debug(TAG) { "restoreInitialRenderSettings: the view's own options again" }
     }
 }
 
